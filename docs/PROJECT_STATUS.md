@@ -215,3 +215,41 @@ Testes criados em `tests/unit/test_cdc_contract.py` cobrem:
 Validação executada em 2026-11-07: `7 passed in 0.06s`. Nenhum erro foi reportado pelo diagnóstico do editor nos arquivos Python.
 
 Próxima atividade: adicionar o adaptador de leitura Pull do Pub/Sub, inicialmente sem persistência externa, com opção explícita de não confirmar mensagens durante a validação do contrato.
+
+## Adaptador Pull do Pub/Sub
+
+Foram criados:
+
+- `src/ingestion/pubsub_probe.py`: leitor Pull limitado, decodificação Base64/JSON, validação pelo contrato CDC e saída apenas de metadados;
+- `tests/unit/test_pubsub_probe.py`: testes do decodificador e da saída sem payload de negócio;
+- `requirements.txt`: dependência `google-cloud-pubsub`;
+- `requirements-dev.txt`: dependências de desenvolvimento com `pytest`.
+
+O adaptador não confirma mensagens por padrão. A opção `--ack` existe apenas para testes controlados e não deve ser usada como mecanismo de ingestão antes da persistência durável.
+
+Validação executada em 2026-11-07: `10 passed in 2.42s`. Nenhum erro foi reportado pelo diagnóstico do editor nos arquivos Python.
+
+Próxima validação pendente: executar o probe contra uma assinatura Pub/Sub com limite pequeno, sem `--ack`, e confirmar que os metadados dos eventos correspondem ao contrato observado.
+
+### Resultado do probe real
+
+## Writer local da Bronze
+
+Foi criado `src/ingestion/bronze_writer.py` para validacao local. O componente:
+
+- gera `event_id` SHA-256 deterministico do envelope CDC canonizado;
+- grava registros append-only em JSONL por tabela;
+- mantem um ledger SQLite local de eventos processados;
+- ignora reprocessamentos identicos.
+
+Testes criados em `tests/unit/test_bronze_writer.py`. Validacao executada em 2026-11-07: `12 passed in 1.67s`. Nenhum erro foi reportado pelo diagnostico do editor.
+
+Limitacao conhecida: o writer local ainda nao oferece atomicidade transacional entre o ledger SQLite e o arquivo JSONL. Ele e um componente de aprendizado e teste; a versao GCP devera usar uma estrategia duravel e recuperavel antes do `ack` do Pub/Sub.
+
+Proxima atividade: conectar o probe ao writer local em um modo controlado, sem `ack` automatico, e depois desenhar a persistencia equivalente no Cloud Storage.
+
+O probe foi executado sem `--ack` na assinatura `ecommerce-gcp-armazens-sub` e retornou três eventos válidos com operação `r` e `snapshot=true`. Os eventos possuíam `message_id`, `source_lsn` e `transaction_id` diferentes.
+
+Essa diferença confirma que não eram apenas reentregas da mesma mensagem. A verificação posterior mostrou o container com `RestartCount=0`, estado `running`, arquivo `offsets.dat` presente e nenhum novo snapshot/erro recente. Conclusão: os eventos distintos pertencem ao backlog produzido durante os reinícios anteriores do Debezium; não há evidência de novo reinício no momento.
+
+O probe não confirmou (`ack`) nenhuma mensagem. A próxima etapa será implementar persistência durável antes de habilitar confirmação.
