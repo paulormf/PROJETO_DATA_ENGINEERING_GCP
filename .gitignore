@@ -1,0 +1,16 @@
+# Ambiente Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Segredos e configurações locais
+.env
+.env.*
+!.env.example
+cdc/debezium/application.properties
+
+# Estado local do Debezium: offsets e schema history
+cdc/debezium/data/
+
+# Arquivos gerados por ferramentas locais
+*.log

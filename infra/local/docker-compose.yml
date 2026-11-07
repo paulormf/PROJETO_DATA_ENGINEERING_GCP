@@ -1,0 +1,18 @@
+services:
+  debezium-server:
+    image: quay.io/debezium/server:3.7.1.Final
+    container_name: ecommerce-gcp-debezium
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
+    volumes:
+      - ../../cdc/debezium/application.properties:/debezium/config/application.properties:ro
+      - ../../cdc/debezium/data:/debezium/data
+      - ${APPDATA}/gcloud:/root/.config/gcloud:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

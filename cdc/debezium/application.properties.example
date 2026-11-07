@@ -1,0 +1,43 @@
+# Debezium Server - projeto ecommerce GCP
+# Copie para application.properties apenas no ambiente local.
+# Nunca versione o arquivo preenchido com credenciais.
+
+# Runtime e persistência de offsets/schema history
+debezium.source.connector.class=io.debezium.connector.postgresql.PostgresConnector
+debezium.source.offset.storage=org.apache.kafka.connect.storage.FileOffsetBackingStore
+debezium.source.offset.storage.file.filename=/debezium/data/offsets.dat
+debezium.source.offset.flush.interval.ms=1000
+debezium.source.schema.history.internal=io.debezium.storage.file.history.FileSchemaHistory
+debezium.source.schema.history.internal.file=/debezium/data/schema-history.dat
+
+# PostgreSQL
+debezium.source.database.hostname=${POSTGRES_HOST}
+debezium.source.database.port=${POSTGRES_PORT}
+debezium.source.database.user=${POSTGRES_USER}
+debezium.source.database.password=${POSTGRES_PASSWORD}
+debezium.source.database.dbname=appdb
+debezium.source.plugin.name=pgoutput
+debezium.source.slot.name=ecommerce_gcp_debezium_slot
+debezium.source.publication.name=ecommerce_gcp_publication
+debezium.source.publication.autocreate.mode=disabled
+
+# Primeiro experimento: tabelas pequenas
+debezium.source.table.include.list=ecommerce.armazens,ecommerce.categorias
+debezium.source.snapshot.mode=initial
+debezium.source.topic.prefix=ecommerce_gcp
+debezium.source.include.schema.changes=false
+debezium.source.heartbeat.interval.ms=0
+# Em produção/laboratório contínuo, criar primeiro o tópico abaixo no Pub/Sub
+# e então definir um intervalo positivo, por exemplo 10000 ms:
+# debezium.source.topic.heartbeat.name=debezium-heartbeat-ecommerce-gcp
+
+# Formato dos eventos enviados ao sink
+debezium.format.value=json
+debezium.format.key=json
+debezium.format.schemas.enable=false
+
+# Google Cloud Pub/Sub
+debezium.sink.type=pubsub
+debezium.sink.pubsub.project.id=${GCP_PROJECT_ID}
+debezium.sink.pubsub.region=us-central1
+debezium.sink.pubsub.ordering.enabled=true
