@@ -20,6 +20,8 @@ A diferenÃ§a entre `999559` na consulta de tamanho fÃ­sico e `1000000` na ex
 
 `terraform apply` executado e aprovado pelo usuario em 2026-11-07. Resultado: `3 added, 0 changed, 0 destroyed`. VerificaÃ§Ã£o posterior confirmou os trÃªs recursos no state Terraform. O bucket foi consultado via gcloud e estÃ¡ em `US-CENTRAL1`, classe `STANDARD`, com acesso uniforme habilitado, prevenÃ§Ã£o de acesso pÃºblico aplicada e soft delete efetivo por 7 dias. Nenhuma chave privada foi criada.
 
+Foi implementado `src/ingestion/gcs_uploader.py` para upload de datasets locais validados. O uploader usa ADC, precondiÃ§Ã£o `if_generation_match=0`, nomes de objetos determinÃ­sticos, manifesto enviado por Ãºltimo e verificaÃ§Ã£o de tamanho/MD5 em reexecuÃ§Ãµes. Testes unitÃ¡rios adicionados em `tests/unit/test_gcs_uploader.py`. ValidaÃ§Ã£o: `25 passed in 1.44s`; sem erros no diagnÃ³stico do editor. Nenhum objeto foi enviado ainda.
+
 `terraform init` e `terraform validate` foram executados com sucesso em 2026-11-07. Provider instalado: `hashicorp/google v7.46.2`. O arquivo `.terraform.lock.hcl` foi gerado e deve ser versionado; `.terraform/` e `terraform.tfvars` permanecem ignorados. Nenhum `plan` ou `apply` foi executado.
 
 Foi criado o mÃ³dulo declarativo em `infra/terraform/gcs/`, sem `init`, `plan` ou `apply`. O mÃ³dulo declara bucket regional Standard, acesso uniforme, prevenÃ§Ã£o de acesso pÃºblico, `force_destroy=false`, lifecycle opcional, service account dedicada e `roles/storage.objectCreator` limitado ao bucket. `terraform fmt -check -diff` foi executado com sucesso usando Terraform `1.16.5`. Nenhum recurso GCP foi criado ou alterado.
