@@ -22,6 +22,26 @@ A diferenÃ§a entre `999559` na consulta de tamanho fÃ­sico e `1000000` na ex
 
 Foi implementado `src/ingestion/gcs_uploader.py` para upload de datasets locais validados. O uploader usa ADC, precondiÃ§Ã£o `if_generation_match=0`, nomes de objetos determinÃ­sticos, manifesto enviado por Ãºltimo e verificaÃ§Ã£o de tamanho/MD5 em reexecuÃ§Ãµes. Testes unitÃ¡rios adicionados em `tests/unit/test_gcs_uploader.py`. ValidaÃ§Ã£o: `25 passed in 1.44s`; sem erros no diagnÃ³stico do editor. Nenhum objeto foi enviado ainda.
 
+CorreÃ§Ã£o realizada apÃ³s a primeira tentativa do comando: a opÃ§Ã£o CLI `--bucket` nÃ£o era mapeada para o parÃ¢metro `bucket_name`, causando `TypeError` antes da autenticaÃ§Ã£o e do upload. O parser foi corrigido e o teste de regressÃ£o passou. ValidaÃ§Ã£o atual do uploader: `5 passed`; nenhum objeto foi criado pela tentativa com erro.
+
+Upload real executado em 2026-11-07 para `ecommerce.categorias`. Foram enviados 2 objetos para o bucket Bronze: um Parquet de 3336 bytes e o manifesto de 343 bytes, totalizando 100 linhas. O prefixo inclui origem, schema, tabela, data de ingestÃ£o e batch_id. A confirmaÃ§Ã£o do upload ocorreu somente apÃ³s a gravaÃ§Ã£o de cada objeto; nenhuma mensagem Pub/Sub foi confirmada.
+
+Foi criado `src/ingestion/postgres_gcs_exporter.py` para o caminho de produÃ§Ã£o: PostgreSQL -> Parquet diretamente em um objeto GCS, sem arquivo Parquet intermediÃ¡rio local. A conexÃ£o usa cursor server-side, transaÃ§Ã£o somente leitura, `ParquetWriter` com Snappy e manifesto enviado somente apÃ³s o fechamento do Parquet. Testes em `tests/unit/test_postgres_gcs_exporter.py`: `9 passed` no conjunto focado; diagnÃ³stico do editor sem erros. A exportaÃ§Ã£o direta real ainda nÃ£o foi executada.
+
+CorreÃ§Ã£o realizada apÃ³s a tentativa do exportador direto: a opÃ§Ã£o `--bucket` nÃ£o era mapeada para `bucket_name`, causando `TypeError` antes da conexÃ£o. O parser foi corrigido e o teste de regressÃ£o passou. ValidaÃ§Ã£o atual: `3 passed`; nenhum objeto foi criado pela tentativa com erro.
+
+O exportador direto foi ajustado para gerar os nomes dos objetos automaticamente. A CLI agora recebe `--bronze-prefix` e aceita `--ingestion-date` e `--batch-id` opcionais; `parquet-object` e `manifest-object` nÃ£o precisam mais ser informados manualmente. Sem `batch-id`, um UUID Ã© gerado; para retry idempotente, o mesmo `batch-id` deve ser reutilizado. Testes focados: `4 passed`; diagnÃ³stico do editor sem erros.
+
+Limpeza antes do empacotamento: removidos `src/ingestion/gcs_uploader.py` e `tests/unit/test_gcs_uploader.py`, pois representavam o fluxo intermediÃ¡rio arquivo local -> GCS e foram substituÃ­dos pelo exportador direto PostgreSQL -> GCS. Mantidos o exportador local como fallback/teste, o validador Parquet e os componentes de validaÃ§Ã£o CDC.
+
+Empacotamento local do Cloud Run Job concluÃ­do em 2026-11-07. Foram criados `infra/cloud_run/full_extract/Dockerfile`, `.dockerignore` e `infra/cloud_run/full_extract/README.md`. A imagem `ecommerce-full-extract:dev` foi construÃ­da com sucesso e `docker run --rm ecommerce-full-extract:dev --help` iniciou o mÃ³dulo esperado. O build nÃ£o fez push nem deploy. Testes unitÃ¡rios do exportador: `5 passed`.
+
+ConfiguraÃ§Ã£o Terraform de Secret Manager criada em `infra/terraform/cloud_run_full_extract/`. Ela declara somente containers de secrets e IAM especÃ­fico para a service account `de-ingestion-writer`; nÃ£o declara versÃµes nem valores de secrets. `terraform init` e `terraform validate` executados com sucesso em 2026-11-07 usando `hashicorp/google v7.46.2`. Nenhum secret foi criado ou alterado.
+
+O modulo foi ajustado para incluir tambem `ecommerce-postgres-host`, junto com usuario e senha. O host sera tratado como configuracao protegida para evitar expor o endpoint externo no repositorio. `terraform fmt` e `terraform validate` executados novamente com sucesso; nenhum valor de secret foi inserido.
+
+Teste real do caminho automÃ¡tico executado em 2026-11-07. O job local conectou ao PostgreSQL remoto e gravou diretamente no GCS, sem usar `data/local`. Foi gerado o batch_id `a5764fa4-fb2c-4ec3-88ec-4818cf81f8f5`, com 100 linhas, 1 lote, Parquet e manifesto. A listagem posterior confirmou os dois objetos e o manifesto retornou `status=succeeded`. Este teste validou o caminho de dados direto; a execuÃ§Ã£o ainda ocorreu localmente, nÃ£o em Cloud Run.
+
 `terraform init` e `terraform validate` foram executados com sucesso em 2026-11-07. Provider instalado: `hashicorp/google v7.46.2`. O arquivo `.terraform.lock.hcl` foi gerado e deve ser versionado; `.terraform/` e `terraform.tfvars` permanecem ignorados. Nenhum `plan` ou `apply` foi executado.
 
 Foi criado o mÃ³dulo declarativo em `infra/terraform/gcs/`, sem `init`, `plan` ou `apply`. O mÃ³dulo declara bucket regional Standard, acesso uniforme, prevenÃ§Ã£o de acesso pÃºblico, `force_destroy=false`, lifecycle opcional, service account dedicada e `roles/storage.objectCreator` limitado ao bucket. `terraform fmt -check -diff` foi executado com sucesso usando Terraform `1.16.5`. Nenhum recurso GCP foi criado ou alterado.
@@ -343,3 +363,39 @@ O probe foi executado sem `--ack` na assinatura `ecommerce-gcp-armazens-sub` e r
 Essa diferença confirma que não eram apenas reentregas da mesma mensagem. A verificação posterior mostrou o container com `RestartCount=0`, estado `running`, arquivo `offsets.dat` presente e nenhum novo snapshot/erro recente. Conclusão: os eventos distintos pertencem ao backlog produzido durante os reinícios anteriores do Debezium; não há evidência de novo reinício no momento.
 
 O probe não confirmou (`ack`) nenhuma mensagem. A próxima etapa será implementar persistência durável antes de habilitar confirmação.
+## Secret Manager para o job de carga full
+
+O mÃ³dulo Terraform em `infra/terraform/cloud_run_full_extract/` foi validado em 2026-11-07. O plano resultou em `6 to add, 0 to change, 0 to destroy`; nenhum `apply` foi executado.
+
+Recursos planejados:
+
+- trÃªs contÃªineres de segredos: host, usuÃ¡rio e senha do PostgreSQL;
+- trÃªs bindings `roles/secretmanager.secretAccessor` para `de-ingestion-writer@botbrewpub-ghsurp.iam.gserviceaccount.com`.
+
+Valores e versÃµes dos segredos nÃ£o serÃ£o criados pelo Terraform, evitando credenciais no estado. PrÃ³xima pendÃªncia: aprovaÃ§Ã£o explÃ­cita para executar o `terraform apply` desses seis recursos.
+## Aplicação dos contêineres do Secret Manager
+
+Em 2026-11-07, o módulo `infra/terraform/cloud_run_full_extract/` foi aplicado com autorização explícita.
+
+Resultado: `6 added, 0 changed, 0 destroyed`.
+
+Validação realizada sem leitura de valores sensíveis:
+
+- os três segredos esperados existem: host, usuário e senha do PostgreSQL;
+- o segredo `ecommerce-postgres-host` possui `roles/secretmanager.secretAccessor` para `de-ingestion-writer@botbrewpub-ghsurp.iam.gserviceaccount.com`;
+- nenhuma versão/valor foi criado pelo Terraform.
+
+Também foi identificado um segredo preexistente chamado `postgres-source-database-url`, que não foi alterado por este módulo. Ele deverá ser avaliado posteriormente quanto a origem, uso e necessidade de migração; não será removido sem autorização.
+
+Próxima etapa: inserir os três valores no Secret Manager por procedimento seguro e depois preparar a configuração do Cloud Run Job para referenciá-los, sem colocar credenciais no repositório ou no estado Terraform.
+## Versões dos segredos do PostgreSQL
+
+Em 2026-11-07, foram verificadas versões ativas nos três segredos sem leitura dos valores:
+
+- `ecommerce-postgres-host`: versão `1` habilitada;
+- `ecommerce-postgres-user`: versão `1` habilitada;
+- `ecommerce-postgres-password`: versão `1` habilitada.
+
+Os valores permanecem fora do repositório, desta conversa e do estado Terraform.
+
+Próxima atividade: configurar o Cloud Run Job para injetar esses segredos como variáveis de ambiente e validar a execução com uma tabela pequena.

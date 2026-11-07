@@ -1,0 +1,9 @@
+project_id                      = "botbrewpub-ghsurp"
+region                          = "us-central1"
+ingestion_service_account_email = "de-ingestion-writer@botbrewpub-ghsurp.iam.gserviceaccount.com"
+
+secret_ids = {
+  postgres_host     = "ecommerce-postgres-host"
+  postgres_user     = "ecommerce-postgres-user"
+  postgres_password = "ecommerce-postgres-password"
+}

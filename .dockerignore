@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+.git/
+.gitignore
+.venv/
+__pycache__/
+*.py[cod]
+*.log
+*.tfstate
+*.tfstate.*
+data/
+cdc/debezium/data/
+tests/
+docs/
+infra/local/
