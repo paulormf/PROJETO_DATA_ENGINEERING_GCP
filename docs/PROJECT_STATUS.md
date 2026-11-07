@@ -399,3 +399,237 @@ Em 2026-11-07, foram verificadas versões ativas nos três segredos sem leitura 
 Os valores permanecem fora do repositório, desta conversa e do estado Terraform.
 
 Próxima atividade: configurar o Cloud Run Job para injetar esses segredos como variáveis de ambiente e validar a execução com uma tabela pequena.
+## Imagem do Cloud Run Job no Artifact Registry
+
+Em 2026-11-07, a imagem local `ecommerce-full-extract:dev` foi publicada manualmente no Artifact Registry:
+
+`us-central1-docker.pkg.dev/botbrewpub-ghsurp/data-engineering/ecommerce-full-extract:dev`
+
+Digest retornado pela publicação:
+
+`sha256:6cfd8bf7ecac8c4c38130ef8263e1736cb619c5fda484de1b685728efa857c8d`
+
+A mensagem `Mounted from botbrewpub-ghsurp/data-platform/ingestion` indica que uma camada idêntica já existia no registro e foi reutilizada. A publicação terminou com sucesso.
+
+Decisão registrada: a publicação manual será usada para compreender e validar o primeiro job. Posteriormente, GitHub Actions deverá construir, testar e publicar imagens versionadas por SHA do commit; produção deverá referenciar imagem imutável por digest ou tag de release.
+
+Próxima atividade: criar e executar o Cloud Run Job pelo Console usando o digest acima.
+## Primeira execução do Cloud Run Job
+
+Em 2026-11-07, o job `ecommerce-full-extract-categorias` foi executado pelo Console com a imagem versionada por digest.
+
+Resultado observado nos logs:
+
+- status: `succeeded`;
+- origem: `ecommerce.categorias`;
+- registros extraídos: `100`;
+- lotes: `1`;
+- formato: Parquet;
+- compressão: Snappy;
+- encerramento do container: `exit(0)`.
+
+Objetos gerados no Cloud Storage:
+
+`bronze/parquet/source=postgresql/schema=ecommerce/table=categorias/ingestion_date=2026-11-07/batch_id=ab9d25c9-e7a4-44e1-a3ab-8661df7f9017/`
+
+O resultado comprova o fluxo PostgreSQL -> Cloud Run Job -> Cloud Storage, sem persistência intermediária local.
+
+Próxima atividade: validar a presença do Parquet e do `manifest.json` no bucket e executar uma segunda carga controlada para observar comportamento de reexecução e geração de novo `batch_id`.
+## Segunda execução e validação de lotes
+
+Em 2026-11-07, o job `ecommerce-full-extract-categorias` foi executado novamente com sucesso.
+
+Resultado observado:
+
+- status: `succeeded`;
+- registros: `100`;
+- lotes: `1`;
+- novo `batch_id`: `faa6e658-0c12-4daf-b960-49e186348e99`;
+- container: `exit(0)`.
+
+O segundo lote foi gravado em um prefixo diferente do primeiro, confirmando que a geração automática de `batch_id` evita sobrescrita entre execuções. Esta validação cobre isolamento físico e rastreabilidade dos lotes; deduplicação lógica e reconciliação serão tratadas nas camadas analíticas.
+
+Critério de aceite do Cloud Run Job para a tabela pequena: aprovado.
+
+Próxima atividade: definir e criar o dataset Bronze no BigQuery e carregar os Parquets gerados, preservando metadados de origem, lote e ingestão.
+## Avaliação de falha e reexecução do full extract
+
+Avaliação do exporter atual:
+
+- cada execução recebe um `batch_id` UUID diferente;
+- o Parquet é gravado antes do `manifest.json`;
+- o manifesto só é publicado depois do fechamento bem-sucedido do Parquet;
+- `if_generation_match=0` impede sobrescrever um objeto já existente;
+- portanto, um lote concluído não é sobrescrito por uma nova execução.
+
+Limitação importante: o exporter atual não retoma um Parquet interrompido no meio. Em uma falha, pode existir um objeto Parquet parcial sem manifesto, e uma nova execução extrai a tabela novamente em um novo lote. O downstream ainda não possui um catálogo/ledger que impeça carregar simultaneamente dois lotes completos no BigQuery.
+
+Decisão de evolução antes de cargas grandes:
+
+1. o carregador do BigQuery deverá aceitar somente lotes com manifesto `status=succeeded`;
+2. deverá existir um controle de lotes com estado `started`, `succeeded` ou `failed`;
+3. a publicação deverá usar prefixo temporário e promoção lógica do lote concluído;
+4. para retomada real, o full extract deverá ser dividido em partes determinísticas, com checkpoints por chave/faixa, em vez de depender de um único Parquet;
+5. o BigQuery deverá carregar um lote aprovado uma única vez, com reconciliação de linhas e bytes.
+
+O job pequeno de `categorias` validou isolamento de objetos, mas não valida ainda retomada, deduplicação downstream ou exatamente uma carga analítica. Essas capacidades permanecem pendentes antes de executar tabelas com milhões de registros.
+## Decisão sobre qualidade na Bronze e Silver
+
+Decisão confirmada em 2026-11-07: a camada Bronze representa uma cópia técnica da origem e não deve corrigir, descartar ou reinterpretar dados do PostgreSQL.
+
+Na Bronze serão priorizadas validações técnicas de ingestão, como:
+
+- arquivo e manifesto presentes;
+- status do lote concluído;
+- contagem de registros compatível com a extração;
+- schema legível;
+- rastreabilidade de origem, tabela e lote.
+
+Regras de qualidade analítica, incluindo nulos obrigatórios, duplicidades, chaves, integridade referencial, padronização e regras de negócio, serão implementadas na Silver com Dataform assertions e modelos SQLX.
+
+A validação realizada até aqui para `ecommerce_bronze.categorias_raw` foi a contagem de 100 registros. Não será criada uma etapa adicional de validação de nulos na Bronze neste momento.
+## Mudança de prioridade: automatização ponta a ponta
+
+Decisão confirmada em 2026-11-07: antes de avançar para Silver/Dataform, o projeto deverá automatizar o fluxo completo para todas as tabelas selecionadas:
+
+`PostgreSQL -> Cloud Run Jobs -> Cloud Storage Bronze -> BigQuery Bronze`
+
+A tabela `categorias` continuará sendo o teste técnico já concluído, mas não haverá expansão manual tabela a tabela pelo Console.
+
+Próxima linha de implementação:
+
+1. definir catálogo de tabelas e estratégia de carga;
+2. tornar o `batch_id` determinístico por execução e tabela;
+3. publicar metadados de lote e controlar estados;
+4. adaptar o Cloud Run Job para execução parametrizada por tabela;
+5. criar carga idempotente do GCS para BigQuery;
+6. orquestrar todas as tabelas com Composer/Airflow;
+7. validar contagens, falhas, retries e reexecuções antes de escalar para os maiores volumes.
+
+O avanço para Silver/Dataform fica dependente do aceite do pipeline automatizado Bronze ponta a ponta.
+## Fase 1: descoberta do contrato de ingestao
+
+Foi criado `docs/sql/discover_ingestion_metadata.sql` com consultas somente leitura para confirmar:
+
+- chaves primarias;
+- foreign keys;
+- colunas candidatas a watermark;
+- chaves e indices unicos.
+
+Nenhum recurso cloud foi criado ou alterado nesta etapa e nenhuma alteracao foi feita no PostgreSQL. O catalogo de ingestao permanecera pendente ate a execucao dessas consultas e a confirmacao da semantica dos campos de data.
+
+Proxima atividade: executar as consultas no banco `appdb`, compartilhar somente os resultados estruturais e montar o catalogo das tabelas sem incluir dados pessoais ou credenciais.
+## Catalogo de ingestao concluido
+
+Em 2026-11-07, foram recebidos os resultados das consultas de metadados do PostgreSQL e confirmado o catalogo das 13 tabelas. O detalhe esta em `docs/INGESTION_CATALOG.md`.
+
+Confirmacoes principais:
+
+- todas as tabelas possuem PK declarada;
+- `estoque` possui PK composta por `armazem_id` e `variante_id`;
+- foram confirmadas 18 foreign keys;
+- nao foi identificado `deleted_at`; deletes fisicos dependem do Debezium CDC;
+- candidatos a watermark foram separados de timestamps de negocio;
+- indices unicos relevantes foram registrados.
+
+Decisao: executar full batch inicial para todas as tabelas e manter CDC como mecanismo de mudancas posteriores. Watermarks serao usados de forma complementar, somente onde a semantica de atualizacao for adequada.
+
+Proxima atividade: transformar o catalogo em configuracao de execucao do pipeline, sem ainda criar recursos cloud adicionais.
+## Configuracao inicial das tabelas
+
+Foi criado `config/ingestion_tables.json` com o contrato executavel inicial das 13 tabelas.
+
+O arquivo registra:
+
+- schema e banco de origem;
+- estrategia full inicial;
+- exigencia de CDC para mudancas posteriores;
+- PK de cada tabela;
+- contagem observada;
+- candidato a watermark ou coluna de tempo de evento;
+- tamanho de lote inicial para benchmark;
+- ordem logica de carga.
+
+Validacao local executada em 2026-11-07: JSON valido, 13 tabelas, nomes sem duplicidade, estrategia `full` e CDC requerido.
+
+Os tamanhos de lote sao parametros iniciais e ainda precisam ser medidos em execucao real. No exporter atual, `batch_size` controla grupos de leitura/row groups dentro do Parquet; ainda nao representa checkpoint ou varios objetos independentes.
+
+Proxima atividade: alterar o exporter para receber e persistir um `batch_id` deterministico, metadados de lote e estados de controle antes de orquestrar a carga completa.
+## Identidade deterministica de lotes
+
+O exporter foi ajustado para aceitar `--run-id` e derivar um identificador estavel no formato `run_id__schema__table`. O `--batch-id` explicito continua suportado para controle direto; execucoes manuais sem ambos continuam usando UUID.
+
+O `manifest.json` agora registra:
+
+- `batch_id`;
+- `run_id`;
+- `ingestion_mode=full`;
+- metadados de origem e contagem ja existentes.
+
+Testes adicionados cobrem determinismo, rejeicao de `run_id` inseguro e parsing da nova opcao. Validacao executada em 2026-11-07: `29 passed in 1.44s`; diagnostico do editor sem erros nos arquivos alterados.
+
+Esta etapa ainda nao implementa retomada parcial nem ledger externo de estados. O proximo desenho deve decidir onde persistir `started`, `failed` e `succeeded` antes de adicionar checkpoints ou a carga automatizada para o BigQuery.
+## Validação real do full extract retomável
+
+Em 2026-11-07, a imagem atualizada foi construída, publicada e aplicada ao job existente `ecommerce-full-extract`.
+
+Imagem publicada:
+
+`us-central1-docker.pkg.dev/botbrewpub-ghsurp/data-engineering/ecommerce-full-extract@sha256:92893a169ab045b46d9d4d8b22d3922341c2841222e16da4111646eb40b6e3cc`
+
+A execução controlada de `ecommerce.categorias` foi concluída com sucesso e produziu:
+
+- `checkpoint.json`;
+- `part-00000.parquet`;
+- `manifest.json` com `status=succeeded`;
+- `100` registros;
+- `batch_id` determinístico derivado do `run_id`.
+
+O mesmo `run_id` foi executado novamente. A segunda execução também terminou com sucesso e manteve exatamente os mesmos três objetos, comprovando a idempotência do lote concluído.
+
+Durante a validação foram encontrados e corrigidos dois problemas reais:
+
+1. o override de argumentos do Cloud Run podia chegar como uma string única; o runner agora normaliza esse formato;
+2. checkpoints exigem leitura, atualização e exclusão de objetos; a service account passou a usar `roles/storage.objectUser`, aplicado pelo Terraform, em vez da combinação insuficiente de `objectCreator` e `objectViewer`.
+
+Os testes locais finais totalizaram `34 passed`. O diagnóstico do editor não apontou erros nos arquivos Python alterados.
+
+Ficam no bucket alguns prefixos de testes anteriores e um prefixo de execução que falhou antes de publicar manifesto. Esses objetos não são considerados lotes válidos pelo pipeline, pois somente manifestos com `status=succeeded` devem ser consumidos. A limpeza desses objetos será tratada por lifecycle ou rotina explícita, sem exclusão manual nesta etapa.
+
+Critério de aceite desta frente: extração PostgreSQL -> Cloud Run Job -> GCS com catálogo, partes Parquet, checkpoint, manifesto, retry idempotente e IAM mínimo operacional: aprovado para a tabela de validação. A execução das 13 tabelas em volume completo ainda deve ser feita como carga operacional controlada, preferencialmente uma tabela por task/orquestração.
+## Recuperacao de lote interrompido validada
+
+O lote de teste `full_20261107T211025Z_581c0e0a__ecommerce__categorias` havia criado uma parte antes da falha de permissao IAM. Depois da troca para `roles/storage.objectUser`, o mesmo `run_id` foi executado novamente.
+
+Resultado: execucao concluida com sucesso e o prefixo ficou com exatamente um `part-00000.parquet`, um `checkpoint.json` e um `manifest.json`. Nao foi criado um segundo Parquet para os mesmos registros.
+
+Essa validacao comprova a recuperacao de uma parte ja enviada, alem da idempotencia de um lote que ja possuia manifesto de sucesso.
+
+## Carga full das 13 tabelas concluida
+
+Em 2026-11-07, o job `ecommerce-full-extract` foi atualizado para a imagem corrigida:
+
+`us-central1-docker.pkg.dev/botbrewpub-ghsurp/data-engineering/ecommerce-full-extract@sha256:e942146a72185848fa98f822c77e49f83881d40ea740f1fe6492784598063a10`
+
+A execucao `ecommerce-full-extract-w22pp` foi retomada com o mesmo `run_id` `full_20261107T213000Z_all`. O mecanismo reutilizou manifests ja concluidos e continuou a partir do checkpoint da tabela `eventos_clientes`.
+
+Resultado operacional:
+
+- execucao Cloud Run concluida com sucesso;
+- 13 manifests finais com `status=succeeded` no GCS;
+- todas as 13 tabelas do catalogo foram processadas;
+- `eventos_clientes` foi concluida com `10000003` registros em `401` partes Parquet;
+- o ultimo lote de eventos contem apenas `3` registros, preservando a contagem real da origem;
+- o checkpoint final e o manifest foram publicados somente apos a conclusao da tabela.
+
+Durante a primeira tentativa da carga completa, a tabela `eventos_clientes` revelou incompatibilidade entre `uuid`/`jsonb` do PostgreSQL e a inferencia do PyArrow. O runner foi ajustado para normalizar UUID para texto e JSONB para JSON estavel antes da escrita Parquet. A nova imagem foi publicada e a mesma carga foi retomada sem duplicar o prefixo logico.
+
+Validacoes realizadas:
+
+- suite local: `35 passed`;
+- execucao Cloud Run full: sucesso;
+- manifests das tabelas: `armazens`, `categorias`, `clientes`, `enderecos_clientes`, `envios`, `estoque`, `eventos_clientes`, `itens_pedido`, `marcas`, `pagamentos`, `pedidos`, `produtos` e `variantes_produtos`;
+- recuperacao de falha e retry idempotente: aprovados;
+- Terraform do bucket e IAM: sem alteracoes pendentes no ultimo plan.
+
+Conclusao da frente: a extracao full PostgreSQL -> Cloud Run Jobs -> GCS Bronze esta operacionalmente validada para o volume atual, com carga em lotes, Parquet, manifest, checkpoint, retry, retomada e idempotencia. A camada de leitura no BigQuery, o CDC para Bronze e a orquestracao com Composer permanecem como proximas frentes.

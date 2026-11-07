@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "source": {
+    "database": "appdb",
+    "schema": "ecommerce"
+  },
+  "initial_load": {
+    "strategy": "full",
+    "cdc_required_for_changes": true,
+    "default_batch_size": 50000
+  },
+  "tables": [
+    {
+      "name": "armazens",
+      "primary_key": ["armazem_id"],
+      "observed_rows": 5,
+      "watermark_candidate": "criado_em",
+      "batch_size": 1000,
+      "load_order": 1
+    },
+    {
+      "name": "categorias",
+      "primary_key": ["categoria_id"],
+      "observed_rows": 100,
+      "watermark_candidate": "criado_em",
+      "batch_size": 1000,
+      "load_order": 1
+    },
+    {
+      "name": "clientes",
+      "primary_key": ["cliente_id"],
+      "observed_rows": 200000,
+      "watermark_candidate": "atualizado_em",
+      "batch_size": 50000,
+      "load_order": 1
+    },
+    {
+      "name": "enderecos_clientes",
+      "primary_key": ["endereco_id"],
+      "observed_rows": 200000,
+      "watermark_candidate": "criado_em",
+      "batch_size": 50000,
+      "load_order": 2
+    },
+    {
+      "name": "envios",
+      "primary_key": ["envio_id"],
+      "observed_rows": 1000000,
+      "watermark_candidate": null,
+      "batch_size": 50000,
+      "load_order": 5
+    },
+    {
+      "name": "estoque",
+      "primary_key": ["armazem_id", "variante_id"],
+      "observed_rows": 500000,
+      "watermark_candidate": "atualizado_em",
+      "batch_size": 50000,
+      "load_order": 3
+    },
+    {
+      "name": "eventos_clientes",
+      "primary_key": ["evento_id"],
+      "observed_rows": 10000000,
+      "watermark_candidate": null,
+      "event_time_column": "ocorrido_em",
+      "batch_size": 25000,
+      "load_order": 6
+    },
+    {
+      "name": "itens_pedido",
+      "primary_key": ["item_pedido_id"],
+      "observed_rows": 2999995,
+      "watermark_candidate": null,
+      "batch_size": 50000,
+      "load_order": 5
+    },
+    {
+      "name": "marcas",
+      "primary_key": ["marca_id"],
+      "observed_rows": 500,
+      "watermark_candidate": "criado_em",
+      "batch_size": 1000,
+      "load_order": 1
+    },
+    {
+      "name": "pagamentos",
+      "primary_key": ["pagamento_id"],
+      "observed_rows": 1000000,
+      "watermark_candidate": null,
+      "batch_size": 50000,
+      "load_order": 5
+    },
+    {
+      "name": "pedidos",
+      "primary_key": ["pedido_id"],
+      "observed_rows": 999559,
+      "watermark_candidate": "atualizado_em",
+      "batch_size": 50000,
+      "load_order": 4
+    },
+    {
+      "name": "produtos",
+      "primary_key": ["produto_id"],
+      "observed_rows": 100000,
+      "watermark_candidate": "atualizado_em",
+      "batch_size": 50000,
+      "load_order": 2
+    },
+    {
+      "name": "variantes_produtos",
+      "primary_key": ["variante_id"],
+      "observed_rows": 100000,
+      "watermark_candidate": "atualizado_em",
+      "batch_size": 50000,
+      "load_order": 3
+    }
+  ]
+}

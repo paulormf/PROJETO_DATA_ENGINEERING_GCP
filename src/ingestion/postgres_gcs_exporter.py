@@ -6,6 +6,7 @@ import argparse
 import io
 import json
 import os
+import re
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,6 +25,15 @@ from ingestion.postgres_parquet_exporter import validate_identifier
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def build_batch_id(*, run_id: str, schema: str, table: str) -> str:
+    """Gera um identificador estavel para uma execucao e tabela."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", run_id):
+        raise ValueError("run_id deve conter somente letras, numeros, ponto, sublinhado ou hifen")
+    schema = validate_identifier(schema, "schema")
+    table = validate_identifier(table, "tabela")
+    return f"{run_id}__{schema}__{table}"
 
 
 def build_object_names(
@@ -84,6 +94,7 @@ def export_table_to_gcs(
     bronze_prefix: str,
     ingestion_date: str | None = None,
     batch_id: str | None = None,
+    run_id: str | None = None,
     batch_size: int = 10_000,
 ) -> dict[str, Any]:
     schema = validate_identifier(schema, "schema")
@@ -91,12 +102,21 @@ def export_table_to_gcs(
     if batch_size <= 0:
         raise ValueError("batch_size deve ser maior que zero")
 
+    if batch_id and run_id:
+        raise ValueError("informe batch_id ou run_id, nao ambos")
+
+    resolved_batch_id = batch_id or (
+        build_batch_id(run_id=run_id, schema=schema, table=table)
+        if run_id
+        else None
+    )
+
     object_prefix, parquet_object, manifest_object = build_object_names(
         bronze_prefix=bronze_prefix,
         schema=schema,
         table=table,
         ingestion_date=ingestion_date,
-        batch_id=batch_id,
+        batch_id=resolved_batch_id,
     )
 
     client = storage.Client(project=project_id)
@@ -141,6 +161,9 @@ def export_table_to_gcs(
 
     manifest = {
         "status": "succeeded",
+        "batch_id": resolved_batch_id or object_prefix.rsplit("batch_id=", 1)[1],
+        "run_id": run_id,
+        "ingestion_mode": "full",
         "source": {"schema": schema, "table": table},
         "object_prefix": object_prefix,
         "rows": row_count,
@@ -168,6 +191,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bronze-prefix", default=os.getenv("GCS_BRONZE_PREFIX", "bronze/parquet"))
     parser.add_argument("--ingestion-date")
     parser.add_argument("--batch-id")
+    parser.add_argument("--run-id")
     parser.add_argument("--batch-size", type=int, default=10_000)
     return parser.parse_args()
 

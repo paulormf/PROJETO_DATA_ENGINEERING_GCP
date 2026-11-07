@@ -27,8 +27,8 @@ resource "google_service_account" "ingestion_writer" {
   project      = var.project_id
 }
 
-resource "google_storage_bucket_iam_member" "ingestion_object_creator" {
+resource "google_storage_bucket_iam_member" "ingestion_object_user" {
   bucket = google_storage_bucket.bronze.name
-  role   = "roles/storage.objectCreator"
+  role   = "roles/storage.objectUser"
   member = "serviceAccount:${google_service_account.ingestion_writer.email}"
 }

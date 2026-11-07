@@ -10,9 +10,9 @@ Este modulo descreve, mas ainda nao aplica, a fundacao da camada Bronze no Cloud
 - `force_destroy = false`, evitando exclusao acidental de objetos;
 - lifecycle de exclusao opcional, desativado por padrao;
 - service account dedicada;
-- permissao `roles/storage.objectCreator` somente no bucket Bronze.
+- permissao `roles/storage.objectUser` somente no bucket Bronze.
 
-O writer recebe apenas permissao de criacao de objetos. Ele nao recebe permissao para listar, ler, excluir objetos ou administrar o bucket.
+O writer pode criar, ler, atualizar e excluir objetos no bucket Bronze. Esse escopo e necessario para atualizar checkpoints e recuperar partes de uma execucao. Ele nao recebe permissao para administrar o bucket ou outros recursos do projeto.
 
 ## Pre-requisitos
 

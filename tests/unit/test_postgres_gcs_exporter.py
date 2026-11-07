@@ -2,7 +2,12 @@ import io
 
 import pyarrow.parquet as pq
 
-from ingestion.postgres_gcs_exporter import build_object_names, parse_args, write_rows_to_parquet
+from ingestion.postgres_gcs_exporter import (
+    build_batch_id,
+    build_object_names,
+    parse_args,
+    write_rows_to_parquet,
+)
 
 
 def test_write_rows_to_parquet_uses_snappy_and_preserves_rows() -> None:
@@ -86,3 +91,39 @@ def test_build_object_names_generates_partitioned_paths() -> None:
     )
     assert parquet_object.endswith("/part-00000.parquet")
     assert manifest_object.endswith("/manifest.json")
+
+
+def test_build_batch_id_is_deterministic_for_run_and_table() -> None:
+    assert build_batch_id(
+        run_id="full_20261107_001",
+        schema="ecommerce",
+        table="categorias",
+    ) == "full_20261107_001__ecommerce__categorias"
+
+
+def test_build_batch_id_rejects_unsafe_run_id() -> None:
+    try:
+        build_batch_id(run_id="full/20261107", schema="ecommerce", table="categorias")
+    except ValueError as exc:
+        assert "run_id" in str(exc)
+    else:
+        raise AssertionError("run_id inseguro deveria ser rejeitado")
+
+
+def test_cli_accepts_run_id(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "postgres_gcs_exporter",
+            "--project-id",
+            "project",
+            "--bucket",
+            "bucket",
+            "--run-id",
+            "full_20261107_001",
+        ],
+    )
+
+    arguments = parse_args()
+
+    assert arguments.run_id == "full_20261107_001"

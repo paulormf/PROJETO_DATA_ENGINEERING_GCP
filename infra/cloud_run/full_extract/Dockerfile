@@ -10,5 +10,6 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src ./src
+COPY config ./config
 
-ENTRYPOINT ["python", "-m", "ingestion.postgres_gcs_exporter"]
+ENTRYPOINT ["python", "-m", "ingestion.full_extract_job"]
