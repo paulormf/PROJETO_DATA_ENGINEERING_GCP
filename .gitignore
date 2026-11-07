@@ -17,3 +17,9 @@ cdc/debezium/data/
 
 # Dados locais da validação do consumidor Bronze
 data/local/
+
+# Estado e variaveis locais do Terraform
+infra/terraform/**/.terraform/
+infra/terraform/**/*.tfstate
+infra/terraform/**/*.tfstate.*
+infra/terraform/**/terraform.tfvars

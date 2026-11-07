@@ -14,6 +14,16 @@ A diferenÃ§a entre `999559` na consulta de tamanho fÃ­sico e `1000000` na ex
 
 ### Validador local de Parquet
 
+### ConfiguraÃ§Ã£o Terraform do Cloud Storage
+
+`terraform plan` executado em 2026-11-07 com `terraform.tfvars` preenchido. Plano observado: `3 to add, 0 to change, 0 to destroy`. Recursos planejados: bucket `botbrewpub-ghsurp-projeto-data-engineering-gcp`, service account `de-ingestion-writer` e binding `roles/storage.objectCreator` no bucket. O plano nÃ£o foi aplicado.
+
+`terraform apply` executado e aprovado pelo usuario em 2026-11-07. Resultado: `3 added, 0 changed, 0 destroyed`. VerificaÃ§Ã£o posterior confirmou os trÃªs recursos no state Terraform. O bucket foi consultado via gcloud e estÃ¡ em `US-CENTRAL1`, classe `STANDARD`, com acesso uniforme habilitado, prevenÃ§Ã£o de acesso pÃºblico aplicada e soft delete efetivo por 7 dias. Nenhuma chave privada foi criada.
+
+`terraform init` e `terraform validate` foram executados com sucesso em 2026-11-07. Provider instalado: `hashicorp/google v7.46.2`. O arquivo `.terraform.lock.hcl` foi gerado e deve ser versionado; `.terraform/` e `terraform.tfvars` permanecem ignorados. Nenhum `plan` ou `apply` foi executado.
+
+Foi criado o mÃ³dulo declarativo em `infra/terraform/gcs/`, sem `init`, `plan` ou `apply`. O mÃ³dulo declara bucket regional Standard, acesso uniforme, prevenÃ§Ã£o de acesso pÃºblico, `force_destroy=false`, lifecycle opcional, service account dedicada e `roles/storage.objectCreator` limitado ao bucket. `terraform fmt -check -diff` foi executado com sucesso usando Terraform `1.16.5`. Nenhum recurso GCP foi criado ou alterado.
+
 ExecuÃ§Ã£o real concluÃ­da para `ecommerce.categorias` e `ecommerce.pedidos`. Ambas as validaÃ§Ãµes retornaram `succeeded`. Para `pedidos`: 1000000 linhas, 20 arquivos, 0 chaves primÃ¡rias duplicadas, 0 nulos nas colunas obrigatÃ³rias e schema compatÃ­vel. Para `categorias`: 100 linhas, 1 arquivo, 0 chaves duplicadas, 0 nulos obrigatÃ³rios e schema compatÃ­vel. RelatÃ³rios foram gravados nas respectivas pastas `data/local/full_extract/`.
 
 Foi criado `src/ingestion/parquet_validator.py`, com testes em `tests/unit/test_parquet_validator.py`. O validador verifica manifesto, arquivos declarados, schema, contagem de linhas, nulos em colunas obrigatÃ³rias e duplicidade de chave primÃ¡ria. ValidaÃ§Ã£o executada em 2026-11-07: `21 passed in 4.20s`; o diagnÃ³stico do editor nÃ£o reportou erros nos arquivos.

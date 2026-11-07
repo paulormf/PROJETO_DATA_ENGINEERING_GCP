@@ -1,0 +1,6 @@
+project_id  = "botbrewpub-ghsurp"
+region      = "us-central1"
+bucket_name = "substitua-por-um-nome-globalmente-unico"
+
+# Mantenha null enquanto a politica de retencao nao for aprovada.
+lifecycle_delete_age_days = null
