@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import json
+from pathlib import Path
 from typing import Any
 
 from google.cloud import pubsub_v1
 
+from ingestion.bronze_writer import LocalBronzeWriter
 from ingestion.cdc_contract import CdcEvent, parse_cdc_event
 
 
@@ -50,6 +51,7 @@ def pull_cdc_messages(
     max_messages: int,
     acknowledge: bool = False,
     timeout_seconds: float = 15.0,
+    bronze_root: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Lê uma amostra de eventos e opcionalmente confirma mensagens válidas.
 
@@ -59,9 +61,12 @@ def pull_cdc_messages(
 
     if max_messages < 1:
         raise ValueError("max_messages precisa ser maior que zero")
+    if acknowledge and bronze_root is None:
+        raise ValueError("acknowledge exige bronze_root para persistência prévia")
 
     subscriber = pubsub_v1.SubscriberClient()
     subscription_path = subscriber.subscription_path(project_id, subscription_id)
+    writer = LocalBronzeWriter(bronze_root) if bronze_root is not None else None
     request = pubsub_v1.types.PullRequest(
         subscription=subscription_path,
         max_messages=max_messages,
@@ -74,13 +79,14 @@ def pull_cdc_messages(
     try:
         for received_message in response.received_messages:
             event = decode_cdc_message(received_message.message.data)
-            summaries.append(
-                summarize_event(
-                    event,
-                    message_id=received_message.message.message_id,
-                    ordering_key=received_message.message.ordering_key,
-                )
+            persisted = writer.write(event) if writer is not None else None
+            summary = summarize_event(
+                event,
+                message_id=received_message.message.message_id,
+                ordering_key=received_message.message.ordering_key,
             )
+            summary["persisted"] = persisted
+            summaries.append(summary)
             ack_ids.append(received_message.ack_id)
 
         if acknowledge and ack_ids:
@@ -103,6 +109,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-messages", type=int, default=3)
     parser.add_argument("--timeout-seconds", type=float, default=15.0)
     parser.add_argument(
+        "--local-bronze-root",
+        type=Path,
+        help="Diretório local para persistir eventos antes do ack.",
+    )
+    parser.add_argument(
         "--ack",
         action="store_true",
         help="Confirma mensagens válidas; não usar antes da persistência real.",
@@ -118,6 +129,7 @@ def main() -> None:
         max_messages=args.max_messages,
         acknowledge=args.ack,
         timeout_seconds=args.timeout_seconds,
+        bronze_root=args.local_bronze_root,
     )
 
     print(json.dumps({"count": len(summaries), "events": summaries}, indent=2))

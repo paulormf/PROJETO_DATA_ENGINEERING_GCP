@@ -6,7 +6,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 
-from ingestion.pubsub_probe import decode_cdc_message, summarize_event
+from ingestion.pubsub_probe import (
+    decode_cdc_message,
+    pull_cdc_messages,
+    summarize_event,
+)
 
 
 def test_decode_cdc_message() -> None:
@@ -54,3 +58,13 @@ def test_summary_does_not_include_business_payload() -> None:
 def test_decode_rejects_invalid_json() -> None:
     with pytest.raises(ValueError, match="JSON UTF-8 válido"):
         decode_cdc_message(b"not-json")
+
+
+def test_ack_requires_local_persistence_root() -> None:
+    with pytest.raises(ValueError, match="bronze_root"):
+        pull_cdc_messages(
+            project_id="project",
+            subscription_id="subscription",
+            max_messages=1,
+            acknowledge=True,
+        )

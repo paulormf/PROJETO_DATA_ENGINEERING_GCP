@@ -6,6 +6,39 @@ Construir uma plataforma de Engenharia de Dados na GCP para o domínio de e-comm
 
 ## Status atual
 
+### Exportador PostgreSQL para Parquet local
+
+### CorreÃ§Ã£o sobre contagem de `pedidos`
+
+A diferenÃ§a entre `999559` na consulta de tamanho fÃ­sico e `1000000` na exportaÃ§Ã£o nÃ£o foi interpretada como inserÃ§Ã£o durante o processo. A exportaÃ§Ã£o executou a leitura dos registros; a consulta fÃ­sica anterior utilizou uma estimativa do PostgreSQL, que pode estar desatualizada. A contagem exata deve ser feita com `COUNT(*)` e comparada com a contagem do Parquet.
+
+### Validador local de Parquet
+
+ExecuÃ§Ã£o real concluÃ­da para `ecommerce.categorias` e `ecommerce.pedidos`. Ambas as validaÃ§Ãµes retornaram `succeeded`. Para `pedidos`: 1000000 linhas, 20 arquivos, 0 chaves primÃ¡rias duplicadas, 0 nulos nas colunas obrigatÃ³rias e schema compatÃ­vel. Para `categorias`: 100 linhas, 1 arquivo, 0 chaves duplicadas, 0 nulos obrigatÃ³rios e schema compatÃ­vel. RelatÃ³rios foram gravados nas respectivas pastas `data/local/full_extract/`.
+
+Foi criado `src/ingestion/parquet_validator.py`, com testes em `tests/unit/test_parquet_validator.py`. O validador verifica manifesto, arquivos declarados, schema, contagem de linhas, nulos em colunas obrigatÃ³rias e duplicidade de chave primÃ¡ria. ValidaÃ§Ã£o executada em 2026-11-07: `21 passed in 4.20s`; o diagnÃ³stico do editor nÃ£o reportou erros nos arquivos.
+
+Foi criada a primeira etapa do extrator batch em `src/ingestion/postgres_parquet_exporter.py`. Ele foi desenhado para a tabela pequena `ecommerce.categorias` antes de qualquer envio ao GCP e possui:
+
+- conexÃ£o configurada por variÃ¡veis do `.env`, sem credenciais no cÃ³digo;
+- transaÃ§Ã£o `REPEATABLE READ READ ONLY`;
+- cursor server-side e `fetchmany`, evitando carregar a tabela inteira na memÃ³ria;
+- arquivos Parquet Snappy por lote;
+- manifesto JSON com tabela, quantidade de linhas, lotes e arquivos gerados;
+- validaÃ§Ã£o de identificadores de schema/tabela antes da composiÃ§Ã£o do SQL.
+
+DependÃªncias adicionadas: `psycopg[binary]`, `pyarrow` e `python-dotenv`. Os testes unitÃ¡rios usam dados sintÃ©ticos e nÃ£o acessam o PostgreSQL.
+
+ValidaÃ§Ã£o executada em 2026-11-07: `19 passed in 6.20s`.
+
+ExportaÃ§Ã£o real executada em 2026-11-07 contra `ecommerce.categorias`, com `batch_size=1000`, sem erros. Resultado: 100 linhas, 1 lote, arquivo `part-00000.parquet`, manifesto gerado e status `succeeded`. A execuÃ§Ã£o confirmou conectividade, leitura somente leitura, conversÃ£o PostgreSQL -> Arrow/Parquet e gravaÃ§Ã£o local.
+
+PrÃ³xima atividade: validar o Parquet e o manifesto; depois decidir a primeira tabela de volume maior para teste controlado.
+
+Teste intermediÃ¡rio executado em 2026-11-07 contra `ecommerce.clientes`, com `batch_size=50000`. Resultado: 200000 linhas, 4 lotes, 4 arquivos Parquet Snappy e manifesto `succeeded`. O tempo observado foi de aproximadamente 6,75 segundos e o volume gerado foi de aproximadamente 7,96 MB. Nenhum recurso GCP foi criado ou alterado.
+
+Teste de maior volume executado em 2026-11-07 contra `ecommerce.pedidos`, com `batch_size=50000`. Resultado: 1000000 linhas, 20 lotes, 20 arquivos Parquet Snappy e manifesto `succeeded`. O tempo observado foi de aproximadamente 94 segundos e o volume gerado foi de aproximadamente 54 MB. A consulta anterior de tamanho havia indicado 999559 linhas; a divergÃªncia reforÃ§a que a origem Ã© mutÃ¡vel e que a plataforma deverÃ¡ registrar contagens de origem/destino e executar reconciliaÃ§Ã£o.
+
 - Fase: 0 — descoberta e planejamento.
 - Situação: descoberta inicial da origem concluída; validação de CDC pendente.
 - Última atualização: 2026-11-07.
@@ -247,6 +280,51 @@ Testes criados em `tests/unit/test_bronze_writer.py`. Validacao executada em 202
 Limitacao conhecida: o writer local ainda nao oferece atomicidade transacional entre o ledger SQLite e o arquivo JSONL. Ele e um componente de aprendizado e teste; a versao GCP devera usar uma estrategia duravel e recuperavel antes do `ack` do Pub/Sub.
 
 Proxima atividade: conectar o probe ao writer local em um modo controlado, sem `ack` automatico, e depois desenhar a persistencia equivalente no Cloud Storage.
+
+## Integracao Pub/Sub com Bronze local
+
+O probe foi integrado ao `LocalBronzeWriter` e executado contra a assinatura `ecommerce-gcp-armazens-sub` com limite de 3 mensagens, sem `--ack`.
+
+Resultado observado:
+
+- 3 eventos Debezium decodificados;
+- 3 eventos persistidos em `data/local/bronze-armazens/raw/table=armazens/events.jsonl`;
+- ledger criado em `data/local/bronze-armazens/state/bronze_ledger.sqlite`;
+- diretório `data/local/` ignorado pelo Git;
+- nenhuma mensagem confirmada no Pub/Sub.
+
+Validação executada em 2026-11-07. O fluxo local validado foi: Pub/Sub Pull -> decode JSON -> contrato CDC -> event_id -> JSONL Bronze/ledger SQLite.
+
+Proxima etapa: avaliar a persistencia equivalente no Cloud Storage, incluindo bucket, IAM, particionamento de objetos, formato Parquet e estrategia de confirmacao antes de criar recursos cloud.
+
+## Desenho preliminar da Bronze no Cloud Storage
+
+Nenhum recurso GCP foi criado nesta etapa. A proposta em avaliacao e:
+
+- bucket regional em `us-central1`, alinhado ao BigQuery planejado;
+- camada raw imutavel preservando o envelope CDC original;
+- arquivos Parquet para consumo analitico, mantendo `raw_payload` ou equivalente para auditoria;
+- caminho particionado por origem, tabela e data de ingestao;
+- nomes de objetos unicos por lote, evitando sobrescrita;
+- service account dedicada com menor privilegio, preferencialmente apenas criacao de objetos para o writer;
+- lifecycle configuravel para reduzir custo, sem Bucket Lock nesta fase de laboratorio;
+- provisionamento manual somente para validacao inicial e migracao posterior para Terraform.
+
+Pendencia: medir o tamanho fisico das tabelas PostgreSQL antes de estimar volume Parquet e custo de armazenamento. Nao criar bucket ate concluir essa medicao e aprovar o desenho.
+
+### Resultado da medicao fisica
+
+Consulta executada pelo usuario em 2026-11-07:
+
+- tamanho das tabelas, sem indices: aproximadamente 2,56 GB decimais / 2,38 GiB;
+- tamanho total de tabelas mais indices: aproximadamente 3,83 GB decimais / 3,56 GiB;
+- indices representam aproximadamente 1,27 GB adicionais;
+- maior tabela: `eventos_clientes`, com aproximadamente 1,63 GB de tabela e 2,36 GB incluindo indices;
+- maiores tabelas seguintes: `itens_pedido`, `pedidos`, `pagamentos` e `envios`.
+
+As contagens atuais tambem diferem da descoberta inicial em algumas tabelas, por exemplo `eventos_clientes`, `itens_pedido` e `pedidos`. Isso reforca que o PostgreSQL e mutavel e que a carga full precisa ser coordenada com CDC e reconciliao.
+
+Decisao tecnica proposta: usar Python batch para as tabelas de fatos e para `eventos_clientes`, gravando Parquet no Cloud Storage; manter snapshot Debezium somente para tabelas pequenas usadas na validacao inicial. O volume de 10 milhoes de eventos nao sera enviado como snapshot Debezium para o Pub/Sub.
 
 O probe foi executado sem `--ack` na assinatura `ecommerce-gcp-armazens-sub` e retornou três eventos válidos com operação `r` e `snapshot=true`. Os eventos possuíam `message_id`, `source_lsn` e `transaction_id` diferentes.
 

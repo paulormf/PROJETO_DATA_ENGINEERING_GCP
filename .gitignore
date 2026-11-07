@@ -14,3 +14,6 @@ cdc/debezium/data/
 
 # Arquivos gerados por ferramentas locais
 *.log
+
+# Dados locais da validação do consumidor Bronze
+data/local/
