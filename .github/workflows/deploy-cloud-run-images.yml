@@ -9,8 +9,10 @@ on:
       - config/**
       - requirements.txt
       - requirements-materializer.txt
+      - requirements-cdc.txt
       - infra/cloud_run/full_extract/**
       - infra/cloud_run/materializer/**
+      - infra/cloud_run/cdc_consumer/**
       - .dockerignore
       - .github/workflows/deploy-cloud-run-images.yml
   workflow_dispatch:
@@ -34,6 +36,7 @@ jobs:
       CLOUD_RUN_REGION: ${{ vars.CLOUD_RUN_REGION }}
       FULL_EXTRACT_JOB_NAME: ${{ vars.FULL_EXTRACT_JOB_NAME }}
       MATERIALIZER_JOB_NAME: ${{ vars.MATERIALIZER_JOB_NAME }}
+      CDC_CONSUMER_SERVICE_NAME: ${{ vars.CDC_CONSUMER_SERVICE_NAME }}
 
     steps:
       - name: Checkout repository
@@ -108,11 +111,24 @@ jobs:
           cache-from: type=gha,scope=materializer
           cache-to: type=gha,mode=max,scope=materializer
 
+      - name: Build and publish CDC consumer image
+        id: build_cdc_consumer
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/cloud_run/cdc_consumer/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPOSITORY }}/ecommerce-cdc-consumer:${{ github.sha }}
+          cache-from: type=gha,scope=cdc-consumer
+          cache-to: type=gha,mode=max,scope=cdc-consumer
+
       - name: Update Cloud Run Jobs by immutable digest
         shell: bash
         env:
           FULL_EXTRACT_DIGEST: ${{ steps.build_full_extract.outputs.digest }}
           MATERIALIZER_DIGEST: ${{ steps.build_materializer.outputs.digest }}
+          CDC_CONSUMER_DIGEST: ${{ steps.build_cdc_consumer.outputs.digest }}
         run: |
           set -euo pipefail
 
@@ -130,11 +146,22 @@ jobs:
             --image="${registry}/ecommerce-bronze-materializer@${MATERIALIZER_DIGEST}" \
             --quiet
 
+          if [[ -n "${CDC_CONSUMER_SERVICE_NAME:-}" ]]; then
+            gcloud run services update "${CDC_CONSUMER_SERVICE_NAME}" \
+              --project="${GCP_PROJECT_ID}" \
+              --region="${CLOUD_RUN_REGION}" \
+              --image="${registry}/ecommerce-cdc-consumer@${CDC_CONSUMER_DIGEST}" \
+              --quiet
+          else
+            echo "CDC_CONSUMER_SERVICE_NAME is not configured; CDC image was published but the service was not updated."
+          fi
+
       - name: Verify deployed image digests
         shell: bash
         env:
           FULL_EXTRACT_DIGEST: ${{ steps.build_full_extract.outputs.digest }}
           MATERIALIZER_DIGEST: ${{ steps.build_materializer.outputs.digest }}
+          CDC_CONSUMER_DIGEST: ${{ steps.build_cdc_consumer.outputs.digest }}
         run: |
           set -euo pipefail
 
@@ -147,4 +174,10 @@ jobs:
           [[ "${actual_full}" == "${expected_full}" ]]
           [[ "${actual_materializer}" == "${expected_materializer}" ]]
 
-          echo "Cloud Run Jobs updated with immutable digests. No execution was triggered."
+          if [[ -n "${CDC_CONSUMER_SERVICE_NAME:-}" ]]; then
+            expected_cdc="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/ecommerce-cdc-consumer@${CDC_CONSUMER_DIGEST}"
+            actual_cdc="$(gcloud run services describe "${CDC_CONSUMER_SERVICE_NAME}" --project="${GCP_PROJECT_ID}" --region="${CLOUD_RUN_REGION}" --format="value(spec.template.spec.containers[0].image)")"
+            [[ "${actual_cdc}" == "${expected_cdc}" ]]
+          fi
+
+          echo "Cloud Run workloads updated with immutable digests. No Job execution was triggered."

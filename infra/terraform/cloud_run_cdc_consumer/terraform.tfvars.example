@@ -1,0 +1,6 @@
+project_id       = "botbrewpub-ghsurp"
+region           = "us-central1"
+bronze_dataset_id = "ecommerce_bronze"
+cdc_table_id     = "cdc_events_raw"
+
+consumer_image = "COLE_AQUI_O_DIGEST_SHA256_PUBLICADO_NO_ARTIFACT_REGISTRY"

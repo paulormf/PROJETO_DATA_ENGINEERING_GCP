@@ -11,8 +11,10 @@ O template usa `snapshot.mode=no_data`: o Debezium nao executa a carga full. A f
 ## Estado
 
 - A publicacao PostgreSQL ja foi criada e validada com as 13 tabelas.
-- O slot v2 ainda nao foi criado; ele so deve ser criado na inicializacao controlada do novo ciclo.
-- Os novos topicos e assinaturas ainda nao foram criados.
+- Os topicos e assinaturas Pub/Sub v2 foram criados e verificados na GCP:
+  13 topicos por tabela, heartbeat, dead letter e 13 assinaturas Pull.
+- O slot v2 foi confirmado e esta ativo no PostgreSQL; o Debezium esta
+  publicando eventos no transporte Pub/Sub v2.
 - O arquivo `application.properties.example` nao contem credenciais.
 
 ## Local de execucao

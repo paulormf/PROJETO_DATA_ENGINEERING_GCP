@@ -3,8 +3,9 @@
 ## Objetivo
 
 Este modulo cria a identidade usada pelo GitHub Actions para publicar as
-imagens `ecommerce-full-extract` e `ecommerce-bronze-materializer` e atualizar
-os Jobs Cloud Run existentes por digest imutavel.
+imagens `ecommerce-full-extract`, `ecommerce-bronze-materializer` e
+`ecommerce-cdc-consumer`, atualizar os Jobs Cloud Run existentes e atualizar o
+servico Cloud Run do consumidor por digest imutavel.
 
 O modulo reutiliza o pool WIF e o provider exclusivos deste repositorio, mas
 cria uma service account separada da identidade de deploy das DAGs. Isso
@@ -18,7 +19,7 @@ Run separadamente.
 - `roles/artifactregistry.writer` somente no repositorio de imagens;
 - `roles/run.developer` no projeto para atualizar Jobs Cloud Run;
 - `roles/iam.serviceAccountUser` somente nas service accounts de runtime dos
-  Jobs.
+  Jobs e do consumidor CDC.
 
 O modulo nao cria, executa ou exclui Jobs Cloud Run. O workflow publica a
 imagem e atualiza somente a referencia de imagem do Job, preservando os

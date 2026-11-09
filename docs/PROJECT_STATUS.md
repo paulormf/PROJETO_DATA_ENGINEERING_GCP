@@ -1277,3 +1277,149 @@ Proxima atividade: configurar o ambiente GitHub `cloud-run-lab` com os outputs
 do modulo e validar o workflow com uma alteracao controlada. O workflow devera
 publicar imagens por SHA, atualizar os Jobs por digest e verificar a imagem
 ativa sem executar os Jobs automaticamente.
+
+## CI/CD das imagens Cloud Run validado
+
+Em 2026-11-09, foi validado por push controlado que uma alteracao em
+`src/**` aciona o CI e o workflow de imagens Cloud Run, sem acionar o deploy
+das DAGs do Composer. A execucao publicou as imagens com a tag do commit
+`f5803a622410795488eab7f9b69322a27273e14f` e atualizou os Jobs por digest:
+
+- `ecommerce-full-extract`:
+  `sha256:d3089d64a0097c549390d347da8bdc2f820b0f4c973de7ee2e23517326901fb9`;
+- `ecommerce-bronze-materializer`:
+  `sha256:98c9343381da7bd38e8718cc8fc0cca42626a54e7df782f5b1f76f9e60e8c609`.
+
+O workflow nao executa os Jobs; ele somente constroi, publica, atualiza e
+verifica os digests. O proximo passo funcional e implementar a ingestao CDC
+do Debezium via Pub/Sub, com landing, idempotencia, deletes, replay e
+observabilidade antes da camada Silver.
+
+## Descoberta do transporte CDC v2
+
+Em 2026-11-09, foi feita consulta somente leitura no Pub/Sub. A infraestrutura
+CDC v2 ja esta presente na GCP:
+
+- 13 topicos `ecommerce_gcp_v2.ecommerce.<tabela>`;
+- topico e assinatura de heartbeat;
+- topico e assinatura de dead letter;
+- 13 assinaturas Pull, com ordering habilitado;
+- retencao de mensagens de 7 dias;
+- retry entre 10 e 600 segundos e DLQ apos 20 tentativas.
+
+O template do Debezium esta alinhado ao transporte v2 e usa
+`snapshot.mode=no_data`. Ainda falta confirmar no PostgreSQL a existencia,
+atividade e LSN do slot `ecommerce_gcp_v2_debezium_slot`. Nenhum consumidor
+CDC cloud foi criado ou alterado nesta etapa.
+
+## Slot CDC v2 e streaming reconfirmados
+
+Em 2026-11-09, a consulta somente leitura no PostgreSQL confirmou o estado do
+ciclo CDC v2:
+
+- `ecommerce_gcp_v2_debezium_slot`: `active=true`;
+- `restart_lsn=1/71AC40C0`;
+- `confirmed_flush_lsn=1/71AC40C0`;
+- o log do Debezium registrou `351 records sent` no intervalo observado;
+- o container `ecommerce-gcp-debezium` permaneceu em estado `Up`.
+
+Essa evidencia, combinada com o teste controlado anterior de INSERT, UPDATE e
+DELETE, confirma o transporte Debezium -> Pub/Sub v2. O proximo componente
+pendente e o consumidor cloud duravel para persistir o envelope CDC na Bronze.
+Nenhum recurso GCP foi criado ou alterado nesta atualizacao.
+
+## Ordem aprovada para PostgreSQL, CDC e multiplas fontes
+
+Em 2026-11-09 foi definida a ordem de evolucao do projeto:
+
+1. concluir o fluxo PostgreSQL: full coordenado, CDC duravel, landing Bronze,
+   idempotencia, deletes, replay e reconciliacao;
+2. construir as camadas Silver e Gold inicialmente com BigQuery + Dataform;
+3. somente depois adicionar os adaptadores de arquivo CSV de fornecedor e API
+   REST mock de transportadora, ambos com dados sinteticos;
+4. reutilizar um contrato leve de ingestao e um catalogo de fontes, sem criar
+   um framework generico excessivamente abstrato.
+
+Dataflow nao sera usado inicialmente para gerar Silver e Gold. Ele permanece
+como alternativa para processamento streaming distribuido em escala maior;
+Dataform e mais adequado para as transformacoes SQL, dependencias, assertions,
+documentacao e tabelas incrementais no BigQuery.
+
+## Dataflow Batch como evolucao aprovada
+
+O projeto tambem demonstrara Dataflow em modo batch, sem introduzir Dataflow
+Streaming neste momento. A primeira aplicacao prevista e processar o feed CSV
+de fornecedor recebido no Cloud Storage, usando Apache Beam em Python para
+validacao, normalizacao e escrita em uma tabela Bronze de staging no BigQuery.
+
+O Composer sera o orquestrador principal e podera iniciar um Dataflow Flex
+Template, aguardar a conclusao, validar os resultados e acionar o Dataform.
+Cloud Scheduler e Workflows nao serao adicionados ao mesmo fluxo apenas para
+duplicar a funcao do Composer. Poderao ser demonstrados posteriormente em um
+fluxo separado, caso exista uma necessidade real de trigger externo.
+
+A diferenca operacional registrada e:
+
+- Dataflow Batch: entrada limitada, job termina e os workers sao encerrados;
+- Dataflow Streaming: entrada continua, job permanece ativo e exige
+  windowing, watermarks, autoscaling e operacao de longo prazo.
+
+O fluxo PostgreSQL full + CDC continuara usando os componentes ja validados:
+Cloud Run Jobs para full, Debezium + Pub/Sub para CDC e Dataform para
+transformacoes analiticas.
+
+## Consumidor CDC push implementado localmente
+
+Em 2026-11-09 foi implementada a primeira camada do consumidor CDC em
+`src/ingestion/cdc_push_service.py`:
+
+- endpoint `GET /healthz` sem dependencia do BigQuery;
+- endpoint `POST /pubsub` para envelopes Pub/Sub push;
+- decodificacao Base64 e validacao pelo contrato Debezium existente;
+- preservacao do envelope bruto;
+- `event_id` deterministico e metadados de LSN, transacao e ordering key;
+- writer BigQuery com `insertId` baseado no `event_id`;
+- resposta `200` somente apos o writer concluir;
+- respostas `400` para payload invalido e `500` para falha de persistencia.
+
+Foram adicionados o Dockerfile em
+`infra/cloud_run/cdc_consumer/`, os testes unitarios e a documentacao em
+`docs/CDC_CONSUMER.md`. A compilacao Python e a suite completa foram
+validadas com `66 passed`.
+
+Ainda nao foram criados ou alterados recursos cloud. A proxima etapa exige
+aprovar o schema da tabela raw CDC, o IAM do consumidor, o servico Cloud Run
+e as 13 assinaturas push antes do primeiro deploy operacional.
+
+### Validacao local do consumidor CDC
+
+- A imagem `ecommerce-cdc-consumer:dev` foi construida localmente com
+  dependencias especificas do consumidor, sem reutilizar `pyarrow` e
+  `psycopg` da carga full.
+- Tamanho local observado: `275534843` bytes.
+- O smoke test local respondeu `{"status":"ok"}` em `GET /healthz`.
+- O container temporario foi encerrado apos o teste.
+- `python -m compileall -q src tests orchestration/composer/dags`: sucesso.
+- `python -m pytest`: `66 passed`.
+- `terraform -chdir=infra/terraform/cloud_run_cdc_consumer validate`: sucesso.
+
+### Generalizacao do consumidor CDC para as 13 tabelas
+
+Em 2026-11-09, a infraestrutura planejada foi generalizada sem aplicar
+recursos cloud:
+
+- uma tabela central `ecommerce_bronze.cdc_events_raw`;
+- um servico Cloud Run compartilhado por todas as tabelas;
+- 13 assinaturas Pub/Sub push, uma para cada topico CDC v2;
+- preservacao das 13 assinaturas Pull existentes para replay e diagnostico;
+- service accounts separadas para runtime do Cloud Run e autenticacao OIDC do
+  push;
+- retry, ordering e DLQ compartilhados com o transporte CDC v2;
+- build e publicacao da imagem CDC adicionados ao workflow de imagens;
+- atualizacao do servico por digest somente quando
+  `CDC_CONSUMER_SERVICE_NAME` estiver configurada no ambiente GitHub.
+
+O modulo esta em
+`infra/terraform/cloud_run_cdc_consumer/`. O proximo passo operacional e
+publicar a imagem, preencher o digest no `terraform.tfvars`, revisar o
+`terraform plan` e somente entao autorizar o `apply`.

@@ -8,11 +8,14 @@ Dockerfiles ou o proprio workflow.
 
 1. autentica no GCP por Workload Identity Federation;
 2. configura o Docker para o Artifact Registry;
-3. constroi `ecommerce-full-extract` e `ecommerce-bronze-materializer`;
+3. constroi `ecommerce-full-extract`, `ecommerce-bronze-materializer` e
+   `ecommerce-cdc-consumer`;
 4. publica cada imagem com a tag imutavel do commit Git;
 5. obtem o digest produzido pelo registry;
-6. atualiza os dois Jobs Cloud Run para esse digest;
-7. consulta novamente os Jobs e falha se o digest esperado nao estiver ativo.
+6. atualiza os dois Jobs Cloud Run e, quando configurado, o servico CDC para
+   esse digest;
+7. consulta novamente os workloads e falha se o digest esperado nao estiver
+   ativo.
 
 O workflow nao executa os Jobs automaticamente. A execucao continua sendo
 disparada pelo Composer ou manualmente, com os argumentos de negocio corretos.
@@ -42,11 +45,14 @@ os valores nao sensiveis emitidos pelo modulo Terraform
 - `CLOUD_RUN_REGION`;
 - `FULL_EXTRACT_JOB_NAME`;
 - `MATERIALIZER_JOB_NAME`.
+- `CDC_CONSUMER_SERVICE_NAME`, depois que o servico CDC for criado pelo
+  Terraform.
 
 Nenhum token, senha ou chave privada e utilizado no workflow.
 
 ## Rollback
 
 Cada commit gera um digest independente. Para rollback, selecione um digest
-anterior conhecido e atualize o Job por uma mudanca controlada no pipeline ou
-por um procedimento operacional documentado. Nao reutilize a tag `latest`.
+anterior conhecido e atualize o Job ou o servico CDC por uma mudanca controlada
+no pipeline ou por um procedimento operacional documentado. Nao reutilize a
+tag `latest`.

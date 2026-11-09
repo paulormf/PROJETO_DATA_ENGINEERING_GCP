@@ -45,17 +45,21 @@ Bronze preserva o recebido e nao aplica regras de qualidade de negocio. Para cad
 
 Pub/Sub oferece entrega pelo menos uma vez. Ordering key reduz reordenacao por chave, mas nao substitui deduplicacao nem torna toda a transacao atomica no BigQuery.
 
-## Ativacao pendente
+## Ativacao validada
 
-Antes de iniciar o Debezium v2:
+- os 13 topicos com prefixo `ecommerce_gcp_v2`, heartbeat, dead letter e suas
+  assinaturas ja foram criados e verificados na GCP;
+- a publicacao contem exatamente as 13 tabelas do catalogo;
+- o slot `ecommerce_gcp_v2_debezium_slot` esta ativo;
+- o `restart_lsn` registrado para o ciclo foi `1/71AC40C0`;
+- uma instancia unica do conector esta em streaming e enviou eventos;
+- insert, update e delete controlados foram confirmados no topico da tabela
+  `armazens`;
+- a carga full coordenada foi executada e os manifests foram validados.
 
-- criar e validar os 13 topicos com prefixo `ecommerce_gcp_v2` e suas assinaturas;
-- confirmar que a publicacao contem exatamente as tabelas do catalogo;
-- garantir persistencia e backup operacional dos offsets;
-- iniciar uma unica instancia do conector;
-- consultar o novo slot e registrar `restart_lsn` como limite inferior antes do full, sem remover ou reutilizar o slot anterior;
-- produzir uma alteracao controlada e confirmar o evento no novo topico;
-- somente entao executar uma nova carga full coordenada.
+Ainda pendem para a classificacao de producao: consumidor CDC duravel,
+persistencia operacional de offsets fora do volume local, materializacao
+idempotente no destino e observabilidade do consumidor.
 
 O slot antigo nao deve ser removido nesta etapa. A carga full de 2026-11-07
 foi classificada como `uncoordinated` e seus objetos foram removidos do GCS
