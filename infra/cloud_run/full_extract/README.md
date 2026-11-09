@@ -27,11 +27,16 @@ Exemplos de argumentos:
 ```text
 --table categorias --run-id full_20261107_001
 --run-id full_20261107_001
+--run-id full_20261109_001 --cdc-epoch-id epoch_20261109_001 --cdc-start-lsn HEX/HEX
 ```
 
-O `run_id` identifica a execucao. O `batch_id` e derivado de `run_id`, schema e tabela, tornando retries idempotentes. Cada parte e gravada como um objeto Parquet separado e acompanhada por `checkpoint.json`; o `manifest.json` so e publicado com `status=succeeded`.
+O `run_id` identifica a execucao. O `batch_id` e derivado de `run_id`, schema e tabela. A data de ingestao e derivada da data presente no `run_id` gerado; para um `run_id` manual sem data, informe `--ingestion-date` e reutilize exatamente a mesma data em qualquer repeticao.
 
-Em caso de falha, uma nova execucao com o mesmo `run_id` reutiliza partes concluidas quando os metadados de checkpoint estiverem presentes. O job nao deve ser executado simultaneamente com o mesmo `run_id` para a mesma tabela.
+Para uma carga coordenada com CDC, `--cdc-epoch-id` e `--cdc-start-lsn` devem ser informados juntos. O LSN e convertido para inteiro e gravado no manifesto para comparacao com `source.lsn` do Debezium. Sem esses argumentos, o manifesto e marcado como `uncoordinated` e serve para laboratorio ou backfill, nao para materializacao full+CDC certificada.
+
+Cada parte e gravada como um objeto Parquet separado; o `checkpoint.json` guarda apenas o estado compacto e o `manifest.json` e publicado com `status=succeeded` ao concluir. O job cria `execution.lock` por lote para impedir duas execucoes concorrentes.
+
+Uma falha interrompida nao e retomada no mesmo prefixo: a transacao PostgreSQL da nova tentativa teria um snapshot diferente e poderia misturar estados da origem. Inicie um novo `run_id`; partes sem manifesto de sucesso sao incompletas e nao podem ser consumidas. Isso repete a leitura daquela tabela e deixa o prefixo incompleto para retencao/lifecycle. Um `execution.lock` abandonado e um sinal para verificar a execucao anterior; nunca o remova enquanto ela puder estar ativa. Uma nova tentativa com outro `run_id` usa outro prefixo.
 
 ## Build local
 

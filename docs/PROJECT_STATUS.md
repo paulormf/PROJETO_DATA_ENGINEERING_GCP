@@ -632,4 +632,56 @@ Validacoes realizadas:
 - recuperacao de falha e retry idempotente: aprovados;
 - Terraform do bucket e IAM: sem alteracoes pendentes no ultimo plan.
 
-Conclusao da frente: a extracao full PostgreSQL -> Cloud Run Jobs -> GCS Bronze esta operacionalmente validada para o volume atual, com carga em lotes, Parquet, manifest, checkpoint, retry, retomada e idempotencia. A camada de leitura no BigQuery, o CDC para Bronze e a orquestracao com Composer permanecem como proximas frentes.
+Conclusao da frente na validacao original: a extracao full PostgreSQL -> Cloud Run Jobs -> GCS Bronze foi validada para o volume observado, com carga em lotes, Parquet, manifest, checkpoint e retry idempotente de lotes ja concluidos. A retomada parcial foi desabilitada posteriormente por seguranca de consistencia; ver a secao de revisao abaixo. A camada de leitura no BigQuery, o CDC para Bronze e a orquestracao com Composer permanecem como proximas frentes.
+
+## Revisao de producao e correcoes de seguranca da extracao
+
+Revisao posterior identificou que a retomada de partes de uma tabela em uma nova execucao nao preserva o snapshot PostgreSQL da execucao anterior. Para evitar misturar estados da origem, o comportamento foi alterado: lotes com checkpoint mas sem manifest de sucesso falham de forma fechada; deve-se iniciar um novo `run_id`, que cria um prefixo isolado. Os objetos do prefixo interrompido nao sao elegiveis para consumo por downstream e ficam sujeitos a retencao/lifecycle. Portanto, a validacao historica de retomada parcial continua sendo evidência do comportamento anterior, mas nao e mais o criterio de retomada da implementacao atual.
+
+Outras correcoes:
+
+- `ingestion_date` e inferida de um `run_id` com data; se o `run_id` manual nao contiver data, `--ingestion-date` passa a ser obrigatoria para garantir que repeticoes apontem ao mesmo prefixo;
+- criado `execution.lock` com precondicao de geracao do GCS, impedindo duas execucoes simultaneas do mesmo lote;
+- checkpoint passa a guardar apenas contagem de partes, linhas e ultima chave, em vez de regravar a lista crescente de metadados de todas as partes em cada lote;
+- falhas de lock cleanup sao emitidas como log de warning; um lock abandonado exige verificar primeiro se a execucao anterior terminou.
+
+Limite arquitetural ainda aberto: a consistencia entre a fotografia full feita pelo Python e o fluxo CDC do Debezium nao esta coordenada por LSN nem reconciliada em um destino. Antes de declarar o pipeline full+CDC consistente, definir fronteira de captura, ordenacao/deduplicacao por chave e LSN, e reconciliacao de deletes. O BigQuery e Composer ainda nao foram integrados.
+
+### Correcao implantada no Cloud Run Job
+
+Em 2026-11-07, a revisao de consistencia foi validada e implantada no job `ecommerce-full-extract` sem disparar uma nova carga full.
+
+Validacoes executadas:
+
+- suite local completa: `39 passed`;
+- diagnostico do editor: nenhum erro nos arquivos Python alterados;
+- `git diff --check`: aprovado, somente avisos de conversao de fim de linha LF/CRLF;
+- build da imagem: aprovado;
+- smoke test do container com `--help`: aprovado;
+- Cloud Run Job: condicao `Ready=True`, geracao `9`.
+
+Imagem implantada por digest imutavel:
+
+`us-central1-docker.pkg.dev/botbrewpub-ghsurp/data-engineering/ecommerce-full-extract@sha256:adc3bd26983961a6410baaf3079df1f7965bffb1dd4e0e5a8d75c3cc0d39bd9c`
+
+A versao implantada inclui validacao estrita de `ingestion_date` no formato `YYYY-MM-DD`, bloqueio atomico por prefixo, checkpoints compactos e falha fechada para lotes interrompidos. Manifests de lotes concluidos continuam idempotentes. Nenhuma extracao PostgreSQL nem escrita adicional de dados Bronze foi executada durante esta implantacao.
+
+Proxima decisao arquitetural obrigatoria: definir a fronteira entre full e CDC por LSN e a estrategia de deduplicacao/reconciliacao no destino antes de automatizar a carga Bronze no BigQuery e antes de introduzir o Composer.
+
+## Contrato CDC-first aprovado e implementado localmente
+
+Em 2026-11-09 foi aprovada a estrategia `cdc_first_replay`: iniciar um ciclo CDC isolado antes de uma nova fotografia full e reaplicar no destino todos os eventos desde um limite inferior seguro do slot.
+
+Fundacao implementada:
+
+- contrato `CdcEpoch` com identificador, LSN PostgreSQL e representacao inteira comparavel ao `source.lsn` do Debezium;
+- argumentos `--cdc-epoch-id` e `--cdc-start-lsn` no full extract, obrigatorios em conjunto;
+- manifesto full classificado como `coordinated` ou `uncoordinated`;
+- template Debezium v2 com novo slot, offsets isolados, `snapshot.mode=no_data`, prefixo de topicos v2 e as 13 tabelas;
+- documento de coordenacao com regras de deduplicacao, ordenacao por chave, replay e deletes;
+- validacao automatica confirmou 13 tabelas no catalogo e 13 tabelas no template Debezium;
+- suite local: `48 passed`; diagnostico do editor sem erros.
+
+Nenhum slot, topico, assinatura ou outro recurso externo foi criado ou alterado. O Debezium nao foi reiniciado e nenhuma nova carga full foi executada.
+
+Proxima atividade controlada: definir no console os 13 topicos e assinaturas v2, revisar custo/retencao, iniciar o novo slot com uma unica instancia do Debezium, registrar `restart_lsn` como limite inferior e validar insert/update/delete antes de executar uma nova carga full coordenada.

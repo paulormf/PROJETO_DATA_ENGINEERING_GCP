@@ -2,10 +2,13 @@ from ingestion.full_extract_job import (
     _normalize_argv,
     _normalize_rows,
     _part_object,
+    _resolve_ingestion_date,
     build_batch_prefix,
     build_batch_id,
 )
 from uuid import UUID
+
+import pytest
 
 
 def test_build_batch_prefix_is_partitioned_by_batch() -> None:
@@ -59,3 +62,33 @@ def test_normalize_rows_converts_uuid_and_json_values() -> None:
             "event_data": '{"source": "web", "value": 1}',
         }
     ]
+
+
+def test_resolve_ingestion_date_from_run_id() -> None:
+    assert (
+        _resolve_ingestion_date(
+            "full_20261107T213000Z_all", None, generated=False
+        )
+        == "2026-11-07"
+    )
+
+
+def test_resolve_ingestion_date_requires_date_for_manual_run_id() -> None:
+    with pytest.raises(ValueError, match="--ingestion-date"):
+        _resolve_ingestion_date("manual_retry", None, generated=False)
+
+
+def test_resolve_ingestion_date_validates_explicit_date() -> None:
+    with pytest.raises(ValueError):
+        _resolve_ingestion_date("manual_retry", "2026-02-30", generated=False)
+
+
+def test_build_batch_prefix_rejects_invalid_ingestion_date() -> None:
+    with pytest.raises(ValueError):
+        build_batch_prefix(
+            bronze_prefix="bronze/parquet",
+            schema="ecommerce",
+            table="pedidos",
+            ingestion_date="20261107",
+            batch_id="full_20261107_001__ecommerce__pedidos",
+        )

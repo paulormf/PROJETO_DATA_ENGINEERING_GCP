@@ -5,10 +5,10 @@
 # Runtime e persistência de offsets/schema history
 debezium.source.connector.class=io.debezium.connector.postgresql.PostgresConnector
 debezium.source.offset.storage=org.apache.kafka.connect.storage.FileOffsetBackingStore
-debezium.source.offset.storage.file.filename=/debezium/data/offsets.dat
+debezium.source.offset.storage.file.filename=/debezium/data/v2/offsets.dat
 debezium.source.offset.flush.interval.ms=1000
 debezium.source.schema.history.internal=io.debezium.storage.file.history.FileSchemaHistory
-debezium.source.schema.history.internal.file=/debezium/data/schema-history.dat
+debezium.source.schema.history.internal.file=/debezium/data/v2/schema-history.dat
 
 # PostgreSQL
 debezium.source.database.hostname=${POSTGRES_HOST}
@@ -17,19 +17,20 @@ debezium.source.database.user=${POSTGRES_USER}
 debezium.source.database.password=${POSTGRES_PASSWORD}
 debezium.source.database.dbname=appdb
 debezium.source.plugin.name=pgoutput
-debezium.source.slot.name=ecommerce_gcp_debezium_slot
+debezium.source.slot.name=ecommerce_gcp_v2_debezium_slot
 debezium.source.publication.name=ecommerce_gcp_publication
 debezium.source.publication.autocreate.mode=disabled
 
-# Primeiro experimento: tabelas pequenas
-debezium.source.table.include.list=ecommerce.armazens,ecommerce.categorias
-debezium.source.snapshot.mode=initial
-debezium.source.topic.prefix=ecommerce_gcp
+# Ciclo CDC-first: todas as tabelas, sem snapshot de dados pelo Debezium.
+# Os topicos ecommerce_gcp_v2.ecommerce.<tabela> devem existir antes da inicializacao.
+debezium.source.table.include.list=ecommerce.armazens,ecommerce.categorias,ecommerce.clientes,ecommerce.enderecos_clientes,ecommerce.envios,ecommerce.estoque,ecommerce.eventos_clientes,ecommerce.itens_pedido,ecommerce.marcas,ecommerce.pagamentos,ecommerce.pedidos,ecommerce.produtos,ecommerce.variantes_produtos
+debezium.source.snapshot.mode=no_data
+debezium.source.topic.prefix=ecommerce_gcp_v2
 debezium.source.include.schema.changes=false
 debezium.source.heartbeat.interval.ms=0
 # Em produção/laboratório contínuo, criar primeiro o tópico abaixo no Pub/Sub
 # e então definir um intervalo positivo, por exemplo 10000 ms:
-# debezium.source.topic.heartbeat.name=debezium-heartbeat-ecommerce-gcp
+# debezium.source.topic.heartbeat.name=debezium-heartbeat-ecommerce-gcp-v2
 
 # Formato dos eventos enviados ao sink
 debezium.format.value=json

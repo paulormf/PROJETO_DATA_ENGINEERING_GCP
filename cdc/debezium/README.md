@@ -1,48 +1,46 @@
 # Debezium Server CDC
 
-Esta pasta contém a primeira configuração do Debezium Server para o projeto de e-commerce.
+Esta pasta contem a configuracao local do Debezium Server para o projeto de e-commerce.
 
-## Objetivo desta etapa
+## Objetivo atual
 
-Capturar inicialmente as tabelas pequenas `ecommerce.armazens` e `ecommerce.categorias`, usando a publicação `ecommerce_gcp_publication` e o slot `ecommerce_gcp_debezium_slot`, enviando os eventos para o Google Cloud Pub/Sub.
+Capturar mudancas das 13 tabelas depois de iniciar um ciclo CDC isolado, usando a publicacao `ecommerce_gcp_publication`, o slot `ecommerce_gcp_v2_debezium_slot` e topicos com prefixo `ecommerce_gcp_v2`.
+
+O template usa `snapshot.mode=no_data`: o Debezium nao executa a carga full. A fotografia inicial continua sendo produzida pelo Cloud Run Job em Parquet. Todos os eventos CDC desde o inicio do ciclo sao preservados e reaplicados sobre essa fotografia no destino.
 
 ## Estado
 
-- A publicação PostgreSQL já foi criada e validada.
-- O slot novo ainda não foi criado; o Debezium deverá criá-lo ao iniciar.
-- Nenhum recurso GCP foi criado por esta etapa.
-- O arquivo `application.properties.example` não contém credenciais.
+- A publicacao PostgreSQL ja foi criada e validada com as 13 tabelas.
+- O slot v2 ainda nao foi criado; ele so deve ser criado na inicializacao controlada do novo ciclo.
+- Os novos topicos e assinaturas ainda nao foram criados.
+- O arquivo `application.properties.example` nao contem credenciais.
 
-## Local de execução
+## Local de execucao
 
-Para a validação inicial, o Debezium Server será executado neste computador de desenvolvimento, enquanto acessa o PostgreSQL Dockerizado no outro computador pela rede.
+No laboratorio, o Debezium Server executa neste computador em Docker e acessa o PostgreSQL no outro computador pela rede. O arquivo `.env` permanece local e o diretorio montado `/debezium/data` persiste offsets e historico.
 
-Em uma evolução de produção, poderemos mover o Debezium para o host do PostgreSQL ou para um runtime dedicado, mantendo o CDC próximo da origem.
+Para producao, o runtime deve ser dedicado e continuamente disponivel. O armazenamento local de offsets e adequado ao laboratorio, mas requer volume persistente, backup e procedimento de recuperacao; uma instancia efemera sem esses controles pode perder continuidade.
 
-Neste computador ficarão durante o laboratório:
+## Preparacao local
 
-- Debezium Server em Docker;
-- arquivo `.env` com as variáveis de execução;
-- diretório persistente para offsets e schema history.
+1. Revisar o template sem substituir o arquivo ativo durante uma execucao.
+2. Confirmar os 13 topicos e assinaturas v2 antes de iniciar o conector.
+3. Confirmar as credenciais ADC locais usadas pelo container.
+4. Preservar o diretorio atual de offsets; nao o reutilizar no ciclo v2.
+5. Copiar o template aprovado para `application.properties`.
+6. Iniciar uma unica instancia com `docker compose -f infra/local/docker-compose.yml up -d debezium-server`.
+7. Validar o streaming sem snapshot de dados e registrar o LSN inicial do ciclo.
 
-O PostgreSQL continuará no outro computador.
+O arquivo preenchido, o `.env` e o diretorio `data/` nao devem ser versionados.
 
-## Preparação no computador de desenvolvimento
+## Criterios de aceite
 
-1. Copiar `application.properties.example` para `application.properties`.
-2. Na raiz do projeto, copiar `.env.example` para `.env` no host que executará o Debezium e preencher as variáveis localmente.
-3. Configurar credenciais ADC locais do gcloud para que o container possa publicar no Pub/Sub.
-4. Confirmar que o arquivo de credenciais ADC existe em `%APPDATA%\\gcloud\\application_default_credentials.json`.
-5. A partir da raiz do projeto, iniciar somente o serviço `debezium-server` com `docker compose -f infra/local/docker-compose.yml up -d debezium-server`.
-6. Validar o snapshot inicial e o estado do slot no PostgreSQL.
+- Debezium inicia sem criar ou alterar a publicacao existente.
+- O slot `ecommerce_gcp_v2_debezium_slot` e criado pelo Debezium.
+- Nenhum evento `op=r` de snapshot e gerado pelo ciclo v2.
+- As 13 tabelas estao incluidas e possuem topico isolado.
+- Eventos controlados de insert, update e delete chegam ao Pub/Sub.
+- O offset persiste depois de uma reinicializacao controlada.
+- O LSN inicial e o identificador do ciclo sao registrados antes do novo full.
 
-O arquivo preenchido e o diretório `data/` não devem ser versionados.
-
-## Critérios de aceite
-
-- Debezium inicia sem criar ou alterar a publicação existente.
-- O slot `ecommerce_gcp_debezium_slot` é criado pelo Debezium.
-- O snapshot gera eventos para `armazens` e `categorias`.
-- O consumidor do Pub/Sub recebe eventos JSON.
-- Um `INSERT`, `UPDATE` e `DELETE` controlado é refletido nos eventos.
-- O offset persiste após reinicialização.
+O procedimento de corte e a regra de materializacao estao em `../../docs/CDC_FULL_COORDINATION.md`.
