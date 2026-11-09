@@ -121,10 +121,19 @@ def validate_manifest(
     return objects, declared_rows
 
 
-def build_table_id(*, dataset: str, table: str) -> str:
+def build_table_id(*, dataset: str, table: str, target_table: str | None = None) -> str:
+    """Monta o identificador da tabela destino sem colidir com tabelas legadas.
+
+    Por padrao, a tabela destino segue ``bronze_<tabela_origem>``. O nome pode
+    ser informado explicitamente pelo orquestrador quando houver uma tabela
+    legada, uma migracao ou uma convencao diferente por dominio.
+    """
+
     validate_identifier(dataset, "dataset")
     validate_identifier(table, "tabela")
-    return f"{dataset}.bronze_{table}"
+    resolved_target = target_table or f"bronze_{table}"
+    validate_identifier(resolved_target, "tabela destino")
+    return f"{dataset}.{resolved_target}"
 
 
 def build_staging_table_id(*, dataset: str, schema: str, table: str, run_id: str) -> str:
@@ -183,6 +192,7 @@ def materialize_full_table(
     primary_key: tuple[str, ...],
     run_id: str,
     ingestion_date: str | None = None,
+    target_table: str | None = None,
     delete_staging_on_success: bool = True,
 ) -> dict[str, Any]:
     """Carrega uma tabela full coordenada em BigQuery Bronze."""
@@ -221,7 +231,11 @@ def materialize_full_table(
         table=table,
         run_id=run_id,
     )
-    final_table_id = build_table_id(dataset=dataset, table=table)
+    final_table_id = build_table_id(
+        dataset=dataset,
+        table=table,
+        target_table=target_table,
+    )
     staging_ref = f"{project_id}.{staging_table_id}"
     final_ref = f"{project_id}.{final_table_id}"
     uris = [f"gs://{bucket_name}/{object_name}" for object_name in objects]
@@ -316,6 +330,7 @@ def materialize_full_table(
         "project_id": project_id,
         "dataset": dataset,
         "source": {"schema": schema, "table": table},
+        "target_table": final_ref,
         "run_id": run_id,
         "manifest_object": manifest_object,
         "staging_table": staging_ref,
@@ -334,6 +349,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dataset", default=os.getenv("BQ_BRONZE_DATASET"), required=not os.getenv("BQ_BRONZE_DATASET"))
     parser.add_argument("--schema", default="ecommerce")
     parser.add_argument("--table", required=True)
+    parser.add_argument(
+        "--target-table",
+        help="nome explicito da tabela Bronze destino; por padrao, bronze_<tabela>",
+    )
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--ingestion-date")
     parser.add_argument("--bronze-prefix", default=os.getenv("GCS_BRONZE_PREFIX", "bronze/parquet"))
@@ -361,6 +380,7 @@ if __name__ == "__main__":
                 primary_key=table_spec.primary_key,
                 run_id=arguments.run_id,
                 ingestion_date=arguments.ingestion_date,
+                target_table=arguments.target_table,
             ),
             indent=2,
             ensure_ascii=False,

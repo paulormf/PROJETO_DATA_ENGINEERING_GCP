@@ -27,7 +27,7 @@ from psycopg.rows import dict_row
 from ingestion.ingestion_catalog import IngestionCatalog, TableSpec, load_catalog
 from ingestion.cdc_epoch import CdcEpoch, build_cdc_epoch
 from ingestion.postgres_gcs_exporter import _load_connection_kwargs, _utc_now, build_batch_id
-from ingestion.postgres_parquet_exporter import validate_identifier
+from ingestion.identifiers import validate_identifier
 
 
 def _safe_run_id(run_id: str) -> str:

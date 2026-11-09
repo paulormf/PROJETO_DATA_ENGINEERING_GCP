@@ -1,0 +1,5 @@
+project_id       = "botbrewpub-ghsurp"
+region           = "us-central1"
+bucket_name      = "botbrewpub-ghsurp-projeto-data-engineering-gcp"
+bronze_dataset_id = "ecommerce_bronze"
+materializer_service_account_id = "de-bronze-materializer"

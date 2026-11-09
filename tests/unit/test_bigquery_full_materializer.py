@@ -86,12 +86,29 @@ def test_manifest_validation_rejects_row_mismatch() -> None:
 
 def test_table_ids_are_deterministic() -> None:
     assert build_table_id(dataset="bronze", table="categorias") == "bronze.bronze_categorias"
+    assert (
+        build_table_id(
+            dataset="bronze",
+            table="categorias",
+            target_table="categorias_raw_v2",
+        )
+        == "bronze.categorias_raw_v2"
+    )
     assert build_staging_table_id(
         dataset="bronze",
         schema="ecommerce",
         table="categorias",
         run_id="full_20261109_001",
     ) == "bronze.__stg_full_ecommerce_categorias_full_20261109_001"
+
+
+def test_table_id_rejects_invalid_explicit_target() -> None:
+    with pytest.raises(ValueError, match="tabela destino"):
+        build_table_id(
+            dataset="bronze",
+            table="categorias",
+            target_table="categorias.raw",
+        )
 
 
 def test_run_id_without_date_requires_ingestion_date() -> None:

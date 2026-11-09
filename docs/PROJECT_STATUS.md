@@ -897,8 +897,8 @@ na execucao, o Cloud Run registrou o digest de plataforma
 Essa diferenca deve ser mantida documentada e revisada no pipeline de
 build/deploy, sem alterar a carga ja concluida.
 
-Ainda nao foi executada carga no BigQuery e nenhum Parquet antigo foi removido.
-A proxima etapa autorizada deve ser a materializacao Bronze no BigQuery,
+Uma carga full coordenada ainda nao foi materializada no BigQuery pelo novo
+materializer. A proxima etapa autorizada deve ser a materializacao Bronze no BigQuery,
 precedida pela definicao/validacao do consumidor CDC duravel e pela
 reconciliacao do full com os eventos desde o LSN inicial.
 
@@ -923,12 +923,82 @@ as contagens e publica a particao logica do mesmo `run_id` em uma transacao
 BigQuery. A tabela Bronze recebe metadados de linhagem e e particionada por
 `_ingestion_date`, com clustering pela chave primaria.
 
+O nome da tabela destino agora e configuravel por `--target-table`; quando
+omitido, o contrato usa `bronze_<tabela_origem>`. Essa convencao cria um
+destino novo, como `ecommerce_bronze.bronze_categorias`, e nao sobrescreve a
+tabela manual legada `ecommerce_bronze.categorias_raw`.
+
+O materializer foi empacotado separadamente em
+`infra/cloud_run/materializer/`. Foi criado
+`requirements-materializer.txt` com somente as dependencias de BigQuery e
+Cloud Storage. O catalogo deixou de importar o exportador PostgreSQL apenas
+para validar identificadores; o helper compartilhado esta em
+`src/ingestion/identifiers.py`. Isso evita instalar Pub/Sub, psycopg e pyarrow
+na imagem do materializer.
+
+Tambem foi criado o modulo `infra/terraform/cloud_run_materializer/`, que
+declara a service account dedicada e as permissoes minimas de leitura no GCS,
+execucao de jobs BigQuery e escrita no dataset Bronze. `terraform fmt`,
+`terraform init -backend=false` e `terraform validate` foram aprovados. Nao
+foi executado `apply`, e nenhum recurso GCP foi alterado nesta etapa. O
+`terraform plan` somente leitura, usando os valores de exemplo, mostrou `4 to
+add, 0 to change, 0 to destroy`: service account, leitor do bucket, BigQuery
+Job User e BigQuery Data Editor no dataset Bronze.
+
 Decisao arquitetural: a copia fisica GCS -> BigQuery fica no materializer
 Python, que sera chamado futuramente pelo Composer/Cloud Run Job. O Dataform
 sera acionado depois da Bronze materializada para Silver/Gold, assertions,
 deduplicacao e regras de negocio. Dataform nao sera usado como controlador
 principal do transporte de arquivos e manifests.
 
-Validacao local desta etapa: `54 passed` na suite unitária. Ainda nao foram
-criados dataset/tabelas BigQuery, imagem Cloud Run do materializer, DAG do
-Composer ou recursos Terraform correspondentes.
+Validacao local desta etapa: `55 passed` na suite unitária. O build local da
+imagem otimizada e o smoke test `--help` tambem foram aprovados. O dataset BigQuery
+ja existia antes desta etapa; a imagem ainda nao foi publicada no Artifact
+Registry, e ainda nao foram criados o Job Cloud Run, o DAG do Composer ou os
+recursos Terraform correspondentes.
+## Reconciliação do estado BigQuery existente
+
+Em 2026-11-09 foi feita uma consulta somente leitura no projeto
+`botbrewpub-ghsurp`. Foi confirmado que o dataset `ecommerce_bronze` ja existe
+em `us-central1` e possui a tabela `categorias_raw` com 100 registros. O
+schema atual contem `categoria_id`, `categoria_pai_id`, `nome_categoria` e
+`criado_em`, sem os metadados de linhagem previstos no novo materializer.
+
+Conclusao: `ecommerce_bronze.categorias_raw` e uma evidencia de uma etapa
+anterior/manual e nao deve ser sobrescrita automaticamente. O novo
+materializer ainda nao foi executado. A convencao de destino aprovada para a
+primeira carga e manter essa tabela como legado de laboratorio e publicar uma
+tabela Bronze nova com o contrato de metadados, usando o nome padrao ou um
+nome explicito via `--target-table`.
+
+Essa verificacao corrige a informacao historica de secoes anteriores deste
+arquivo que afirmavam que nenhum dataset BigQuery existia. O estado real do
+GCP passa a ser a referencia operacional; os registros anteriores permanecem
+como historico das etapas em que foram escritos.
+
+## Automatizacao futura do full e da materializacao
+
+O Cloud Run Job `ecommerce-full-extract` ainda esta configurado com os
+argumentos fixos da primeira carga coordenada:
+`--run-id=full_20261109_001`, `--cdc-epoch-id=epoch_20261109_001` e
+`--cdc-start-lsn=1/71AC40C0`. Isso foi intencional para tornar o primeiro ciclo
+reprodutivel e auditavel; nao e o desenho final de operacao.
+
+Na versao orquestrada, o Composer devera disparar um componente coordenador
+que gera o `run_id`, consulta/valida o LSN inicial do slot CDC, cria o registro
+imutavel do `epoch_id` e passa somente uma referencia de controle ao full
+extract. Os valores continuarao existindo tecnicamente para linhagem e
+reprocessamento, mas nao serao digitados manualmente pelo operador.
+
+O Composer devera controlar a sequencia:
+
+1. criar o ciclo CDC e registrar o LSN inicial;
+2. executar o Cloud Run Job de extração PostgreSQL -> GCS;
+3. validar os manifests coordenados;
+4. executar o materializer GCS -> BigQuery Bronze por tabela;
+5. reconciliar o full com o CDC persistido;
+6. disparar o workflow Dataform para Silver e Gold.
+
+O Composer sera o orquestrador e o Cloud Run executara as cargas pesadas. O
+Dataform nao sera usado como controlador principal da copia fisica GCS ->
+BigQuery.

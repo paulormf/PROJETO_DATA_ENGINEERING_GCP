@@ -19,7 +19,7 @@ controle dependencias, retries, timeout e alertas.
 3. carregar explicitamente as partes Parquet listadas no manifesto para uma
    tabela staging deterministica;
 4. comparar `COUNT(*)` do staging com `manifest.rows`;
-5. criar a tabela `bronze_<tabela>` se necessario, particionada por
+5. criar a tabela destino se necessario, por padrao `bronze_<tabela>`, particionada por
    `_ingestion_date` e clusterizada pela chave primaria;
 6. substituir, em uma transacao BigQuery, somente as linhas do mesmo
    `_ingestion_run_id`;
@@ -29,6 +29,12 @@ O job nao executa regras de negocio, nao remove nulos e nao transforma o
 modelo de origem. A Bronze preserva o snapshot e adiciona metadados de
 linhagem, incluindo `run_id`, `epoch_id`, `start_lsn`, schema, tabela e data
 de ingestao.
+
+O nome da tabela destino pode ser informado explicitamente pelo orquestrador
+com `--target-table`. Isso evita colisao com tabelas legadas ou com nomes
+mantidos por contratos existentes. A tabela manual
+`ecommerce_bronze.categorias_raw` nao sera sobrescrita pelo padrao
+`bronze_categorias`.
 
 ## Papel do Dataform
 
@@ -52,6 +58,11 @@ O Cloud Composer devera disparar o job de materializacao depois que o full
 coordenado for concluido. Depois da reconciliacao com o CDC persistido, o DAG
 acionara o workflow Dataform para Silver e Gold.
 
-Nesta etapa o dataset BigQuery, a imagem do materializer, o Job Cloud Run e o
-DAG ainda nao foram criados. Esses recursos exigem uma etapa posterior de
+O dataset `ecommerce_bronze` ja existe no projeto e possui a tabela manual de
+validacao `categorias_raw`, com 100 registros. O novo materializer ainda nao
+foi executado e nao deve sobrescrever essa tabela sem uma migracao controlada,
+pois ela nao possui os metadados de linhagem previstos neste contrato. A
+imagem local do materializer foi validada com `docker build` e `--help`, mas
+ainda nao foi publicada no Artifact Registry. O Job Cloud Run e o DAG Composer
+ainda nao foram criados; esses recursos exigem uma etapa posterior de
 Terraform/Console e autorizacao explicita para apply/deploy.

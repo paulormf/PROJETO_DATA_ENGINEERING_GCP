@@ -20,7 +20,7 @@ from google.cloud import storage
 from psycopg import sql
 from psycopg.rows import dict_row
 
-from ingestion.postgres_parquet_exporter import validate_identifier
+from ingestion.identifiers import validate_identifier
 
 
 def _utc_now() -> str:

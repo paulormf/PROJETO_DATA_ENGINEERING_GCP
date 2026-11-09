@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ingestion.postgres_parquet_exporter import validate_identifier
+from ingestion.identifiers import validate_identifier
 
 
 @dataclass(frozen=True)
