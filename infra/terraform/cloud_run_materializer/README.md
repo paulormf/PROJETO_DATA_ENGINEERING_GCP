@@ -10,11 +10,12 @@ materializer ler Parquets do Cloud Storage e gravar tabelas no BigQuery.
 - `roles/bigquery.jobUser` no projeto, para criar jobs BigQuery;
 - `roles/bigquery.dataEditor` somente no dataset Bronze, para criar a staging
   e publicar as tabelas de destino.
+- um Cloud Run Job usando a imagem publicada por digest.
 
-O modulo nao cria bucket, dataset, imagem, versao de secret, Cloud Run Job ou
-DAG Composer. Esses recursos possuem ciclos de vida e autorizacoes proprios.
-O Cloud Run Job sera definido depois que a imagem estiver publicada por digest
-e o contrato de overrides do Composer estiver validado.
+O modulo nao cria bucket, dataset, imagem, versao de secret ou DAG Composer.
+Esses recursos possuem ciclos de vida e autorizacoes proprios. O Job recebe
+argumentos fallback validos, mas o Composer devera sobrescrever tabela, run_id
+e data de ingestao em cada execucao.
 
 ## Validacao sem alteracao GCP
 
@@ -33,8 +34,13 @@ Pop-Location
 ```
 
 O `apply` fica para uma etapa posterior e somente deve ocorrer com autorizacao
-explicita, depois da revisao do dataset, bucket e identidade que receberao as
-permissoes.
+explicita, depois da revisao do dataset, bucket, identidade, digest e
+argumentos fallback que serao configurados no Job.
+
+O principal que executar o apply precisa ter `iam.serviceAccounts.actAs` para
+a service account do materializer. Essa permissao nao e concedida
+automaticamente pelo modulo, evitando ampliar o acesso de usuarios ou de uma
+identidade de CI sem uma decisao explicita.
 
 ## Console equivalente
 

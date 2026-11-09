@@ -62,7 +62,10 @@ O dataset `ecommerce_bronze` ja existe no projeto e possui a tabela manual de
 validacao `categorias_raw`, com 100 registros. O novo materializer ainda nao
 foi executado e nao deve sobrescrever essa tabela sem uma migracao controlada,
 pois ela nao possui os metadados de linhagem previstos neste contrato. A
-imagem local do materializer foi validada com `docker build` e `--help`, mas
-ainda nao foi publicada no Artifact Registry. O Job Cloud Run e o DAG Composer
-ainda nao foram criados; esses recursos exigem uma etapa posterior de
-Terraform/Console e autorizacao explicita para apply/deploy.
+imagem local do materializer foi validada com `docker build` e `--help` e
+publicada no Artifact Registry com digest imutavel. O Job Cloud Run foi criado
+com Terraform e executado uma vez para cada uma das 13 tabelas do catalogo.
+As 13 tabelas `bronze_<tabela>` foram validadas no BigQuery com as contagens
+dos manifests, metadados do mesmo `run_id` e particionamento/clustering
+esperados. O DAG Composer ainda nao foi criado; ele automatizara esse fluxo
+nas proximas execucoes.

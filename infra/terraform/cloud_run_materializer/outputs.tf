@@ -12,3 +12,13 @@ output "bronze_dataset_id" {
   description = "Dataset que recebe a permissao de escrita do materializer."
   value       = var.bronze_dataset_id
 }
+
+output "materializer_job_name" {
+  description = "Nome do Cloud Run Job de materializacao."
+  value       = google_cloud_run_v2_job.materializer.name
+}
+
+output "materializer_job_id" {
+  description = "Identificador do Cloud Run Job de materializacao."
+  value       = google_cloud_run_v2_job.materializer.id
+}

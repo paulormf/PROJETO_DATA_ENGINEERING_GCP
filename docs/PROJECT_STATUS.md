@@ -940,10 +940,12 @@ Tambem foi criado o modulo `infra/terraform/cloud_run_materializer/`, que
 declara a service account dedicada e as permissoes minimas de leitura no GCS,
 execucao de jobs BigQuery e escrita no dataset Bronze. `terraform fmt`,
 `terraform init -backend=false` e `terraform validate` foram aprovados. Nao
-foi executado `apply`, e nenhum recurso GCP foi alterado nesta etapa. O
-`terraform plan` somente leitura, usando os valores de exemplo, mostrou `4 to
-add, 0 to change, 0 to destroy`: service account, leitor do bucket, BigQuery
-Job User e BigQuery Data Editor no dataset Bronze.
+foi executado `apply`, e nenhum recurso GCP foi alterado durante a validacao
+inicial. Com autorizacao explicita, o `apply` foi executado em 2026-11-09 e
+criou 4 recursos: a service account
+`de-bronze-materializer@botbrewpub-ghsurp.iam.gserviceaccount.com`, o leitor
+do bucket, `BigQuery Job User` no projeto e `BigQuery Data Editor` no dataset
+Bronze. O plan posterior confirmou `No changes`.
 
 Decisao arquitetural: a copia fisica GCS -> BigQuery fica no materializer
 Python, que sera chamado futuramente pelo Composer/Cloud Run Job. O Dataform
@@ -953,9 +955,36 @@ principal do transporte de arquivos e manifests.
 
 Validacao local desta etapa: `55 passed` na suite unitária. O build local da
 imagem otimizada e o smoke test `--help` tambem foram aprovados. O dataset BigQuery
-ja existia antes desta etapa; a imagem ainda nao foi publicada no Artifact
-Registry, e ainda nao foram criados o Job Cloud Run, o DAG do Composer ou os
-recursos Terraform correspondentes.
+ja existia antes desta etapa. A imagem foi publicada no Artifact Registry com
+a tag `materializer-20261109-01` e o digest
+`sha256:f518e6f2ed52764a3fa3ba83ca52a8c0f061ccd956d5e06720b73f8c525cc610`.
+O Job Cloud Run `ecommerce-bronze-materializer` foi criado pelo Terraform em
+`us-central1`, esta `Ready=True` na geracao 1 e usa a service account dedicada,
+2 vCPU, 4 GiB, timeout de 3600 segundos e um retry. O plan posterior confirmou
+`No changes`. O Job ainda nao foi executado; portanto nenhuma tabela nova foi
+materializada no BigQuery. O DAG do Composer ainda nao foi criado.
+
+## Materializacao Bronze full concluida
+
+Em 2026-11-09, apos a remocao autorizada da tabela manual legada
+`ecommerce_bronze.categorias_raw`, o Job foi executado uma vez para cada uma
+das 13 tabelas do catalogo, com overrides de `table`, `target-table`, `run-id`
+e `ingestion-date`. Todas as execucoes terminaram com sucesso.
+
+Validacao somente leitura no BigQuery:
+
+- 13 tabelas `bronze_<tabela>` criadas no dataset `ecommerce_bronze`;
+- 17.100.608 linhas publicadas, correspondentes aos manifests full;
+- todas as linhas possuem `run_id=full_20261109_001`;
+- todas as linhas possuem `epoch_id=epoch_20261109_001`;
+- todas as tabelas estao particionadas por `_ingestion_date`;
+- todas estao clusterizadas pela chave primaria definida no catalogo;
+- datas de ingestao confirmadas como `2026-11-09`.
+
+Essa execucao conclui o transporte PostgreSQL -> GCS -> BigQuery Bronze para
+o ciclo full coordenado. Ainda nao representa a reconciliacao final full+CDC,
+porque o consumidor CDC duravel e a reaplicacao dos eventos desde o LSN
+inicial ainda precisam ser implementados.
 ## Reconciliação do estado BigQuery existente
 
 Em 2026-11-09 foi feita uma consulta somente leitura no projeto

@@ -1,5 +1,14 @@
-project_id       = "botbrewpub-ghsurp"
-region           = "us-central1"
-bucket_name      = "botbrewpub-ghsurp-projeto-data-engineering-gcp"
-bronze_dataset_id = "ecommerce_bronze"
+project_id                       = "botbrewpub-ghsurp"
+region                           = "us-central1"
+bucket_name                      = "botbrewpub-ghsurp-projeto-data-engineering-gcp"
+bronze_dataset_id                = "ecommerce_bronze"
 materializer_service_account_id = "de-bronze-materializer"
+job_name                         = "ecommerce-bronze-materializer"
+materializer_image               = "us-central1-docker.pkg.dev/botbrewpub-ghsurp/data-engineering/ecommerce-bronze-materializer@sha256:f518e6f2ed52764a3fa3ba83ca52a8c0f061ccd956d5e06720b73f8c525cc610"
+job_default_args = [
+  "--schema=ecommerce",
+  "--table=categorias",
+  "--target-table=bronze_categorias",
+  "--run-id=full_20261109_001",
+  "--ingestion-date=2026-11-09",
+]

@@ -27,3 +27,50 @@ resource "google_bigquery_dataset_iam_member" "materializer_data_editor" {
   role       = "roles/bigquery.dataEditor"
   member     = "serviceAccount:${google_service_account.materializer.email}"
 }
+
+resource "google_cloud_run_v2_job" "materializer" {
+  name     = var.job_name
+  location = var.region
+  project  = var.project_id
+
+  labels = {
+    environment = "lab"
+    component   = "bronze-materializer"
+    managed_by  = "terraform"
+  }
+
+  template {
+    template {
+      service_account = google_service_account.materializer.email
+      max_retries     = var.max_retries
+      timeout         = var.task_timeout
+
+      containers {
+        image = var.materializer_image
+        args  = var.job_default_args
+
+        env {
+          name  = "GCP_PROJECT_ID"
+          value = var.project_id
+        }
+
+        env {
+          name  = "GCS_BUCKET"
+          value = var.bucket_name
+        }
+
+        env {
+          name  = "BQ_BRONZE_DATASET"
+          value = var.bronze_dataset_id
+        }
+
+        resources {
+          limits = {
+            cpu    = var.cpu_limit
+            memory = var.memory_limit
+          }
+        }
+      }
+    }
+  }
+}
