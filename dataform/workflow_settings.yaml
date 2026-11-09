@@ -1,0 +1,5 @@
+defaultProject: botbrewpub-ghsurp
+defaultDataset: ecommerce_silver
+defaultLocation: us-central1
+defaultAssertionDataset: ecommerce_dataform_assertions
+dataformCoreVersion: 3.0.0

@@ -1450,9 +1450,139 @@ Resultados observados apos o apply:
 
 Pendencias seguintes:
 
-1. executar uma alteracao CDC controlada no PostgreSQL e consultar a tabela raw;
-2. executar o plan do modulo `github_actions_cloud_run`, agora que a service
-   account `de-cdc-consumer` existe;
-3. apos revisao, aplicar o binding `Service Account User` para o deployer e
-   configurar `CDC_CONSUMER_SERVICE_NAME` no ambiente GitHub;
-4. somente depois integrar o raw CDC ao modelo Silver/Dataform.
+1. integrar o raw CDC ao modelo Silver/Dataform;
+2. adicionar fontes complementares de arquivos e API;
+3. implementar observabilidade, reconciliação e runbooks de operação.
+
+### Validacao end-to-end do CDC
+
+Em 2026-11-09 foi executado um teste controlado em `ecommerce.categorias`.
+Uma linha foi alterada com o marcador `[CDC_VALIDATION]` e depois restaurada
+na mesma sessao PostgreSQL. Os dois eventos foram entregues ao BigQuery:
+
+- `source_table`: `categorias`;
+- `operation`: `u` nos dois eventos;
+- `snapshot`: `false` nos dois eventos;
+- LSNs observados: `6202183712` e `6202198104`;
+- ambos os eventos possuem `event_id` deterministico e `ingested_at` valido;
+- o primeiro evento registrou o marcador de validacao e o segundo registrou
+  a restauracao do valor anterior.
+
+Resultado: fluxo PostgreSQL -> Debezium -> Pub/Sub -> Cloud Run -> BigQuery
+validado com sucesso para a assinatura push de `categorias`.
+
+### Plan do CI/CD do consumidor CDC
+
+Com a service account `de-cdc-consumer` existente, o plan do modulo
+`github_actions_cloud_run` foi executado em 2026-11-09 com sucesso. O plano
+apresentou `1 to add, 0 to change, 0 to destroy`: o binding
+`roles/iam.serviceAccountUser` da identidade de deploy do GitHub Actions sobre
+`de-cdc-consumer`.
+
+O apply foi autorizado e concluido em 2026-11-09 com `1 added, 0 changed,
+0 destroyed`. O plan posterior retornou `No changes`, confirmando o estado
+sem drift. O workflow de imagens ja publica a imagem CDC e atualiza o servico
+por digest quando `CDC_CONSUMER_SERVICE_NAME` esta configurada no ambiente
+GitHub `cloud-run-lab`; essa variavel ainda deve ser cadastrada manualmente
+com o valor `ecommerce-cdc-consumer`.
+
+### Validacao do CI/CD das imagens Cloud Run
+
+Em 2026-11-09, o workflow de imagens foi executado manualmente pela branch
+`main` depois do cadastro de `CDC_CONSUMER_SERVICE_NAME`. O workflow concluiu
+com sucesso, publicou as imagens full extract, materializer e CDC e atualizou
+os dois Cloud Run Jobs e o servico CDC sem executar cargas.
+
+Evidencias do consumidor CDC:
+
+- revisao ativa: `ecommerce-cdc-consumer-00002-z78`;
+- trafego: 100% na nova revisao;
+- imagem ativa:
+  `ecommerce-cdc-consumer@sha256:68f731f2f017409cc45f7f5bcaefa84b6adb6a178e7d72ca9ca0d0255b129a99`;
+- verificacao posterior via gcloud confirmou o mesmo digest no servico.
+
+### Bootstrap local do Dataform Silver
+
+Com a arquitetura Silver aprovada, foi criado o projeto local em
+`dataform/`, sem criar repositorio, dataset ou qualquer outro recurso cloud.
+O projeto contem:
+
+- `workflow_settings.yaml` com projeto, regiao, datasets de saida e
+  `dataformCoreVersion: 3.0.0`;
+- catalogo central das 13 tabelas e suas chaves primarias;
+- declaracoes das tabelas Bronze e de `cdc_events_raw`;
+- geracao metadata-driven das 13 tabelas incrementais Silver;
+- uma assertion de integridade de chave primaria por tabela;
+- documentacao da reconciliacao full + CDC.
+
+O schema efetivo das tabelas Bronze e CDC foi consultado no BigQuery antes da
+implementacao. A consulta confirmou os tipos materializados, incluindo
+`dados_evento` como `STRING` e `cdc_events_raw.source_lsn` como `INT64`.
+
+Como Node/npm nao estao instalados no host Windows, a compilacao foi executada
+em um container Docker temporario com Dataform CLI `3.0.50`. Resultado:
+`Compiled 26 action(s)` e exit code `0`, sem executar SQL no BigQuery.
+
+O proximo passo exige revisar o grafo compilado e aprovar a criacao/configuracao
+do repositorio Dataform e dos datasets `ecommerce_silver` e
+`ecommerce_dataform_assertions`. A primeira execucao cloud sera feita somente
+apos essa revisao; nao foi executado `dataform run` nesta etapa.
+
+### Decisao Dataform: JavaScript e SQLX em conjunto
+
+Foi aprovada uma abordagem hibrida. O JavaScript do Dataform e usado em
+`dataform/definitions/silver_tables.js` e
+`dataform/definitions/silver_assertions.js` somente para gerar de forma
+metadata-driven as 13 acoes repetitivas. O catalogo centraliza tabelas,
+tipos e chaves primarias, reduzindo duplicacao e risco de divergencia entre
+modelos estruturalmente iguais.
+
+SQLX continuara sendo usado para modelos semanticos e regras de negocio que
+precisam ser lidos e revisados como uma consulta dedicada, incluindo dimensoes,
+fatos e data marts. A escolha nao adiciona custo de processamento por linha:
+o JavaScript e executado na compilacao e o resultado e SQL executado pelo
+BigQuery.
+
+### Terraform Dataform: plan validado
+
+Foi criado o modulo `infra/terraform/dataform/`. A consulta somente leitura ao
+BigQuery confirmou que `ecommerce_bronze` esta em `us-central1`; os datasets
+`ecommerce_silver` e `ecommerce_dataform_assertions` ainda nao existem.
+
+O modulo foi inicializado com Google provider `7.46.2`, validado com sucesso e
+teve um `terraform plan` executado sem apply. O plano apresenta `11 to add,
+0 to change, 0 to destroy`, incluindo:
+
+- API Dataform declarada com `disable_on_destroy = false`;
+- datasets Silver e de assertions, sem exclusao automatica de conteudo;
+- service account `de-dataform-runner`;
+- leitura no Bronze, escrita nos dois datasets de saida e BigQuery Job User;
+- permissoes de Service Account User e Token Creator para o Dataform service
+  agent;
+- repositorio Dataform `ecommerce-dataform` em `us-central1`.
+
+Nenhum recurso Dataform ou dataset de saida foi criado nesta etapa. O proximo
+passo depende de aprovacao explicita do `apply`; depois disso sera necessario
+conectar o codigo local ao repositorio Dataform e executar primeiro uma
+compilacao/revisao do grafo cloud, antes de materializar a Silver.
+
+### Resultado do apply da fundacao Dataform
+
+Em 2026-11-09, o apply autorizado criou com sucesso os datasets
+`ecommerce_silver` e `ecommerce_dataform_assertions`, a service account
+`de-dataform-runner`, os bindings de BigQuery/IAM e a habilitacao do Dataform
+API. Os dois datasets foram confirmados no BigQuery em `us-central1`.
+
+Durante a aplicacao foi identificado que ja existia um repositorio Dataform
+`ecommerce-dataform`. A leitura do recurso mostrou que ele esta conectado ao
+repositorio GitHub do projeto anterior
+`paulormf/PROJETO_ECOSSISTEMA_GCP` e usa a service account
+`sa-dataform-dev@botbrewpub-ghsurp.iam.gserviceaccount.com`.
+
+O repositorio existente foi importado somente no state local para diagnostico;
+nenhuma alteracao foi aplicada nele. O plano atual detecta que a configuracao
+local removeria a conexao Git existente e substituiria a service account, por
+isso essa alteracao foi interrompida. Reutilizar esse repositorio misturaria os
+projetos. A recomendacao e criar um novo ID de repositorio para este projeto,
+conectar posteriormente ao GitHub `PROJETO_DATA_ENGINEERING_GCP` e manter o
+repositorio antigo intacto.

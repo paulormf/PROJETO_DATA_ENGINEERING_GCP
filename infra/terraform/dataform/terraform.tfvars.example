@@ -1,0 +1,12 @@
+project_id       = "botbrewpub-ghsurp"
+region           = "us-central1"
+dataform_region  = "us-central1"
+bigquery_location = "us-central1"
+
+bronze_dataset_id   = "ecommerce_bronze"
+silver_dataset_id   = "ecommerce_silver"
+assertion_dataset_id = "ecommerce_dataform_assertions"
+
+dataform_repository_id           = "ecommerce-dataform"
+dataform_repository_display_name = "Ecommerce Dataform"
+dataform_service_account_id      = "de-dataform-runner"

@@ -26,3 +26,7 @@ infra/terraform/**/.terraform/
 infra/terraform/**/*.tfstate
 infra/terraform/**/*.tfstate.*
 infra/terraform/**/terraform.tfvars
+infra/terraform/**/*.plan
+
+# Credenciais locais do Dataform CLI
+.df-credentials.json
