@@ -1,0 +1,8 @@
+project_id          = "botbrewpub-ghsurp"
+region              = "us-central1"
+composer_dags_bucket = "us-central1-ecommerce-compo-9b6b94ee-bucket"
+
+workload_identity_pool_id     = "github-actions"
+workload_identity_provider_id = "github-data-engineering-gcp"
+github_repository             = "paulormf/PROJETO_DATA_ENGINEERING_GCP"
+deployer_service_account_id   = "de-github-composer-deployer"

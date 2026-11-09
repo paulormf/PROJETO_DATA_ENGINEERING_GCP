@@ -15,6 +15,9 @@ cdc/debezium/data/
 # Arquivos gerados por ferramentas locais
 *.log
 
+# Credenciais temporarias geradas pela autenticacao OIDC do GitHub Actions
+gha-creds-*.json
+
 # Dados locais da validação do consumidor Bronze
 data/local/
 

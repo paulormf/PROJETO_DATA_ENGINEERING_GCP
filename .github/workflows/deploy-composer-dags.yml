@@ -1,0 +1,77 @@
+name: Deploy Composer DAGs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    name: Publish DAGs to Composer
+    runs-on: ubuntu-latest
+    environment: composer-lab
+
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+      GCP_DEPLOYER_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+      COMPOSER_DAGS_BUCKET: ${{ vars.COMPOSER_DAGS_BUCKET }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_vars=(
+            GCP_PROJECT_ID
+            GCP_WIF_PROVIDER
+            GCP_DEPLOYER_SERVICE_ACCOUNT
+            COMPOSER_DAGS_BUCKET
+          )
+
+          for variable_name in "${required_vars[@]}"; do
+            if [[ -z "${!variable_name:-}" ]]; then
+              echo "::error::GitHub Actions variable ${variable_name} is not configured."
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud with Workload Identity Federation
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          version: ">= 390.0.0"
+
+      - name: Upload Composer DAG files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gcloud storage cp \
+            orchestration/composer/dags/ecommerce_bronze_materialization.py \
+            orchestration/composer/dags/materialization_plan.py \
+            "gs://${COMPOSER_DAGS_BUCKET}/dags/" \
+            --project="${GCP_PROJECT_ID}"
+
+      - name: Verify uploaded Composer DAG files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gcloud storage ls \
+            "gs://${COMPOSER_DAGS_BUCKET}/dags/ecommerce_bronze_materialization.py" \
+            "gs://${COMPOSER_DAGS_BUCKET}/dags/materialization_plan.py" \
+            --project="${GCP_PROJECT_ID}"

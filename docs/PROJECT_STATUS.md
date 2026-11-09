@@ -1177,3 +1177,42 @@ Esse workflow nao acessa GCP, nao publica DAGs e nao usa credenciais. A
 proxima evolucao sera um workflow separado de deploy para o bucket do
 Composer, autenticado via Workload Identity Federation e executado somente
 apos a aprovacao do Pull Request.
+
+## CD inicial para DAGs do Composer
+
+Em 2026-11-09 foi criado o workflow
+`.github/workflows/deploy-composer-dags.yml`. Nesta primeira versão, ele e
+acionado somente por `workflow_dispatch` e publica os dois arquivos da DAG
+Bronze no bucket do Composer:
+
+- `orchestration/composer/dags/ecommerce_bronze_materialization.py`;
+- `orchestration/composer/dags/materialization_plan.py`.
+
+O workflow usa `google-github-actions/auth@v3` com Workload Identity
+Federation e `google-github-actions/setup-gcloud@v3`. Nao foram criados ou
+alterados recursos GCP nesta etapa. Ainda estao pendentes a configuracao do
+WIF, a service account de deploy, os bindings IAM minimos e as variaveis do
+ambiente `composer-lab` no GitHub.
+
+A documentacao operacional esta em `docs/GITHUB_ACTIONS_CI_CD.md`. Depois da
+validacao manual, sera avaliada a ativacao do gatilho automatico para merges
+em `main`, com protecao de ambiente e aprovacao quando aplicavel.
+
+## WIF/IAM do deploy Composer aplicado
+
+Em 2026-11-09 foi aplicado o modulo
+`infra/terraform/github_actions_composer/` com resultado `4 added, 0 changed,
+0 destroyed`. O pool WIF existente `github-actions` foi reutilizado sem
+alterar o provider de outro repositorio. Foram criados:
+
+- provider `github-data-engineering-gcp`, restrito ao repositorio
+  `paulormf/PROJETO_DATA_ENGINEERING_GCP` e a `refs/heads/main`;
+- service account `de-github-composer-deployer@botbrewpub-ghsurp.iam.gserviceaccount.com`;
+- binding `roles/iam.workloadIdentityUser` para o repositorio;
+- binding `roles/storage.objectUser` somente no bucket
+  `us-central1-ecommerce-compo-9b6b94ee-bucket`.
+
+O `terraform validate` foi aprovado e o plan posterior retornou `No changes`.
+Ainda falta cadastrar as variaveis no ambiente GitHub `composer-lab` e executar
+manualmente o workflow de deploy para validar a autenticacao OIDC e a
+publicacao dos dois arquivos no Composer.
