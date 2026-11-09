@@ -1163,3 +1163,17 @@ foi utilizado apenas para esta validacao inicial.
 Proxima evolucao operacional: versionar as DAGs e seus modulos auxiliares no
 GitHub e substituir o upload manual por CI/CD, com validacao, testes e envio
 controlado ao bucket do Composer a partir de um commit revisado.
+
+## CI inicial para DAGs e Python
+
+Foi criado `.github/workflows/ci.yml` para executar, em Pull Requests e
+pushes na branch `main`:
+
+- instalacao de `requirements-dev.txt` com Python 3.12;
+- suite completa de testes unitarios;
+- compilacao/sintaxe de `src`, das DAGs Composer e dos testes.
+
+Esse workflow nao acessa GCP, nao publica DAGs e nao usa credenciais. A
+proxima evolucao sera um workflow separado de deploy para o bucket do
+Composer, autenticado via Workload Identity Federation e executado somente
+apos a aprovacao do Pull Request.
