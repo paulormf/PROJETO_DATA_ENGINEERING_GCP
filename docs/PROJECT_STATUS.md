@@ -1031,3 +1031,135 @@ O Composer devera controlar a sequencia:
 O Composer sera o orquestrador e o Cloud Run executara as cargas pesadas. O
 Dataform nao sera usado como controlador principal da copia fisica GCS ->
 BigQuery.
+
+## DAG local do Composer para a materializacao Bronze
+
+Em 2026-11-09 foi criada a primeira DAG local de orquestracao em
+`orchestration/composer/dags/ecommerce_bronze_materialization.py`. Ela nao
+cria recursos GCP nem foi enviada a um ambiente Composer. O desenho usa um
+unico Cloud Run Job reutilizavel e mapeia uma tarefa por tabela, com limite de
+quatro tarefas simultaneas. A lista de tabelas fica em
+`materialization_plan.py` e possui teste de sincronizacao com
+`config/ingestion_tables.json`.
+
+A DAG recebe `run_id` e `ingestion_date` do ciclo full coordenado, monta os
+overrides do materializer e permite reprocessamento seletivo por tabela. O
+default reproduz o ciclo `full_20261109_001`, mas o uso operacional devera
+passar os valores pelo `dag_run.conf` gerado pelo coordenador do pipeline.
+
+Foi escolhida inicialmente a execucao nao-deferrable para nao assumir que o
+futuro ambiente Composer tera triggerer habilitado. Depois da criacao e
+validacao do Composer, a operacao podera habilitar o modo deferrable para
+reduzir o consumo de slots do worker durante o polling do Cloud Run.
+
+Validacao local desta etapa: `60 passed` na suite completa, incluindo cinco
+testes do plano; sintaxe dos dois arquivos Python validada; diagnostico do
+editor sem erros; `git diff --check` sem problemas. Nenhum deploy Composer foi
+realizado.
+
+## Preparacao do ambiente Composer
+
+Em 2026-11-09 foi preparado o modulo
+`infra/terraform/composer/`, ainda sem `apply`. O modulo declara uma service
+account dedicada, `roles/composer.worker`, `roles/run.jobsExecutorWithOverrides`
+e `roles/run.viewer` no Cloud Run Job materializer, alem do ambiente Composer
+3 com a versao de imagem informada em `terraform.tfvars`.
+
+O equivalente manual esta documentado no README do modulo. A escolha
+operacional desta etapa e Composer 3 pequeno, resiliÃªncia padrao e sem
+triggerer enquanto a DAG permanecer `deferrable=False`. O modo de
+desenvolvimento hibernÃ¡vel continua como alternativa de laboratorio pelo
+Console, mas nao e representado pelo modulo Terraform atual.
+
+Nenhum ambiente Composer foi criado, nenhuma permissao IAM foi aplicada e
+nenhuma DAG foi enviada ao bucket do ambiente. O proximo passo exige escolha
+do caminho de provisionamento: Console ou `terraform apply` revisado.
+
+Validacao local do modulo: `terraform fmt -check`, `terraform init
+-backend=false` e `terraform validate` aprovados com
+`hashicorp/google v7.46.2` e `hashicorp/google-beta v7.46.2`. O arquivo
+`.terraform.lock.hcl` do modulo foi gerado para versionamento; nenhum recurso
+cloud foi aplicado.
+
+Tentativa inicial de criacao do Composer pelo Console em 2026-11-09 falhou
+com a mensagem `The zone or region does not have sufficient resources to
+handle the request at the moment`. O erro indicou indisponibilidade
+temporaria de capacidade na infraestrutura da regiao, e nao falha de IAM ou
+da DAG.
+
+## Ambiente Composer criado
+
+Em 2026-11-09 o ambiente foi criado com sucesso pelo Console:
+
+- nome: `ecommerce-composer-lab`;
+- regiao: `us-central1`;
+- versao informada: `2.11.1-build.23`;
+- Airflow: acessivel pelo link gerado pelo ambiente;
+- bucket de DAGs: `us-central1-ecommerce-compo-9b6b94ee-bucket`.
+
+As DAGs deste repositorio foram publicadas no bucket `dags/` e a DAG
+`ecommerce_bronze_materialization` apareceu no Airflow sem erro de importacao.
+
+## Primeira execucao Composer: falha de template corrigida
+
+Em 2026-11-09 foi disparada uma execucao manual da DAG pelo Console. O
+Console nao exibiu formulario de `dag_run.conf` e criou a execucao com
+`dag_run.conf = None`. A tarefa `build_materialization_plan` foi concluida,
+mas as 13 tarefas mapeadas falharam durante a renderizacao Jinja antes de
+chamar o Cloud Run, com o erro:
+
+`jinja2.exceptions.UndefinedError: 'None' has no attribute 'get'`
+
+As expressoes de configuracao do operador foram corrigidas para usar
+`(dag_run.conf or {}).get(...)`, preservando os overrides via JSON e tratando
+o acionamento sem configuracao. A correcao foi validada com 61 testes,
+compilacao dos arquivos Composer, `git diff --check` e diagnostico do editor
+sem erros. A DAG corrigida ainda precisa ser reenviada ao bucket `dags/` e
+validada em uma nova execucao.
+
+## Segunda execucao Composer: override de argumentos corrigido
+
+Na execucao seguinte, a DAG passou pela renderizacao Jinja e chamou o Cloud
+Run, confirmando que a primeira correcao foi publicada. O Cloud Run rejeitou a
+solicitacao porque o override continha uma lista `args` junto com
+`clear_args=true`:
+
+`Args list for override must be empty when clear_args field is set to true`
+
+O plano em `materialization_plan.py` foi corrigido para nao enviar
+`clear_args`. A API do Cloud Run substitui os argumentos existentes quando
+recebe a lista `args`, e o container do materializer possui um `ENTRYPOINT`
+sem argumentos fixos. A correcao foi validada com 61 testes, compilacao dos
+arquivos Composer, `git diff --check` e diagnostico do editor sem erros.
+A proxima atividade e reenviar `materialization_plan.py`, aguardar a
+sincronizacao e executar novamente a DAG.
+
+## Terceira execucao Composer: permissao de polling do Cloud Run pendente
+
+Na execucao seguinte, o Cloud Run aceitou o pedido e criou operacoes de
+execucao, mas o worker do Composer falhou ao consultar o estado dessas
+operacoes com:
+
+`Permission 'run.operations.get' denied`
+
+O problema esta na identidade usada pelo worker do Composer ou no escopo do
+binding IAM. `roles/run.jobsExecutorWithOverrides` permite iniciar o Job com
+overrides, enquanto `roles/run.viewer` inclui a leitura de operacoes. A
+proxima atividade e confirmar a service account real do ambiente Composer e
+garantir `roles/run.viewer` no escopo do projeto para essa identidade,
+mantendo `roles/run.jobsExecutorWithOverrides` no Job materializer. Nenhuma
+nova execucao deve ser disparada antes dessa verificacao. Tambem e necessario
+verificar no Cloud Run se as execucoes criadas antes da falha de polling
+terminaram.
+
+## Execucao Composer validada
+
+Em 2026-11-09, apos corrigir o binding IAM da service account usada pelo
+ambiente Composer, a DAG `ecommerce_bronze_materialization` foi executada
+com sucesso. O Composer conseguiu iniciar e acompanhar as execucoes do Cloud
+Run materializer para as tabelas Bronze. O upload manual no bucket `dags/`
+foi utilizado apenas para esta validacao inicial.
+
+Proxima evolucao operacional: versionar as DAGs e seus modulos auxiliares no
+GitHub e substituir o upload manual por CI/CD, com validacao, testes e envio
+controlado ao bucket do Composer a partir de um commit revisado.

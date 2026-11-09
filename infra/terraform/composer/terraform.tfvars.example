@@ -1,0 +1,10 @@
+project_id     = "botbrewpub-ghsurp"
+region         = "us-central1"
+environment_name = "ecommerce-composer-lab"
+
+# Substitua pela versao Composer 3 exatamente disponivel no Console.
+# Versao observada no ambiente criado pelo Console em 2026-11-09.
+image_version = "composer-3-airflow-2.11.1-build.23"
+
+composer_service_account_id = "de-composer-orchestrator"
+materializer_job_name       = "ecommerce-bronze-materializer"
