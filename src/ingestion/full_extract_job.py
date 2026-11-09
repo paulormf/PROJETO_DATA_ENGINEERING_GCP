@@ -1,5 +1,7 @@
 """Executa full extract parametrizado e controlado do PostgreSQL para o GCS."""
 
+# Teste controlado de roteamento do workflow: alteracao sem efeito operacional.
+
 from __future__ import annotations
 
 import argparse
