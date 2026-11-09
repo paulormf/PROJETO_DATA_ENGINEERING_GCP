@@ -685,3 +685,56 @@ Fundacao implementada:
 Nenhum slot, topico, assinatura ou outro recurso externo foi criado ou alterado. O Debezium nao foi reiniciado e nenhuma nova carga full foi executada.
 
 Proxima atividade controlada: definir no console os 13 topicos e assinaturas v2, revisar custo/retencao, iniciar o novo slot com uma unica instancia do Debezium, registrar `restart_lsn` como limite inferior e validar insert/update/delete antes de executar uma nova carga full coordenada.
+
+## Terraform Pub/Sub CDC v2 preparado
+
+Foi criado o modulo `infra/terraform/pubsub_cdc` como fonte declarativa dos recursos de transporte do ciclo CDC v2.
+
+O modulo declara:
+
+- 13 topicos com nomes compativeis com o `topic.prefix` do Debezium;
+- 13 assinaturas Pull com ordering, retry com backoff e expiracao desabilitada;
+- retencao de sete dias nos topicos para replay parametrizado;
+- um topico e uma assinatura de Dead Letter;
+- IAM do service agent do Pub/Sub para publicar na DLQ e reconhecer mensagens das assinaturas.
+
+Validacoes realizadas em 2026-11-09:
+
+- Terraform `v1.16.5`;
+- provider Google `v7.46.2`;
+- `terraform fmt -check`: aprovado;
+- `terraform validate`: aprovado;
+- `terraform plan`: `42 to add, 0 to change, 0 to destroy`.
+
+Nenhum recurso foi criado. O `apply` permanece pendente de revisao e autorizacao explicita. O plano foi executado contra `botbrewpub-ghsurp` apenas para leitura.
+
+Observacao de producao: o template Debezium ainda usa offsets em arquivo local para o laboratorio. Antes de declarar o runtime CDC pronto para producao, deve ser escolhido e implementado um armazenamento duravel de offsets/schema history e um runtime continuamente disponivel.
+
+Antes do apply, o modulo foi endurecido para o padrao profissional:
+
+- criada service account `de-cdc-publisher`;
+- publisher restrito por IAM aos 13 topicos CDC;
+- politica padrao de destruicao `ABANDON` para topicos e assinaturas;
+- output da identidade que devera ser associada ao runtime Debezium;
+- documentado que ADC local nao usa automaticamente essa service account;
+- mantida a necessidade de backend remoto Terraform em bucket dedicado antes de producao.
+
+Novo plano somente leitura: `56 to add, 0 to change, 0 to destroy`. Nenhum recurso foi criado. O apply continua pendente de autorizacao explicita e revisao do state/backend.
+
+## Pub/Sub CDC v2 aplicado e verificado
+
+Em 2026-11-09, com autorizacao explicita, o modulo Terraform corrigido foi aplicado no projeto `botbrewpub-ghsurp`.
+
+Resultado:
+
+- `56 added, 0 changed, 0 destroyed`;
+- 13 topicos CDC v2 criados;
+- 13 assinaturas Pull criadas;
+- topico e assinatura de Dead Letter criados;
+- service account `de-cdc-publisher@botbrewpub-ghsurp.iam.gserviceaccount.com` criada;
+- publisher da service account restrito aos 13 topicos;
+- IAM do service agent Pub/Sub aplicado para DLQ e reconhecimento das assinaturas;
+- Terraform plan posterior: `No changes`;
+- verificacao GCP: 14 topicos e 14 assinaturas encontrados, incluindo DLQ.
+
+O Debezium ainda nao foi iniciado e nenhum slot PostgreSQL foi criado ou alterado. O state permanece local para o laboratorio; backend remoto GCS e persistencia duravel de offsets continuam pendentes antes de uma classificacao de producao.

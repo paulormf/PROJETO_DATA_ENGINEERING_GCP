@@ -1,0 +1,3 @@
+project_id = "botbrewpub-ghsurp"
+region     = "us-central1"
+deletion_policy = "ABANDON"
