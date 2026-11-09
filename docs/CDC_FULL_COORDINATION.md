@@ -57,4 +57,7 @@ Antes de iniciar o Debezium v2:
 - produzir uma alteracao controlada e confirmar o evento no novo topico;
 - somente entao executar uma nova carga full coordenada.
 
-O slot antigo nao deve ser removido nesta etapa. A carga full de 2026-11-07 permanece evidencia de desempenho e funcionamento, mas e classificada como `uncoordinated` para consistencia full+CDC.
+O slot antigo nao deve ser removido nesta etapa. A carga full de 2026-11-07
+foi classificada como `uncoordinated` e seus objetos foram removidos do GCS
+depois da validacao do full coordenado de 2026-11-09. A evidencia operacional
+permanece registrada neste repositorio e no historico de execucao.

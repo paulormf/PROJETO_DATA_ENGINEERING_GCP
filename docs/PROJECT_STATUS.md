@@ -838,3 +838,97 @@ Fluxo aprovado para a proxima etapa de BigQuery:
 
 Assim, o BigQuery sera introduzido na fase de materializacao Bronze, nao na
 fase de transporte inicial PostgreSQL -> GCS.
+
+## Decisao sobre Parquets antigos e nova imagem do full
+
+Os Parquets antigos nao serao removidos antes da nova carga coordenada ser
+concluida e reconciliada. Para o laboratorio, eles poderao ser removidos
+depois dessa validacao ou submetidos a uma politica de lifecycle direcionada
+ao prefixo `uncoordinated`; nenhuma limpeza destrutiva foi executada.
+
+Foi verificado que o Cloud Run Job `ecommerce-full-extract` ainda usa a imagem
+digest `adc3bd26983961a6410baaf3079df1f7965bffb1dd4e0e5a8d75c3cc0d39bd9c`,
+atualizada em 2026-11-07, e esta configurado apenas com
+`--table=categorias`. A implementacao de coordenacao por
+`--cdc-epoch-id`/`--cdc-start-lsn` foi adicionada ao codigo em 2026-11-09.
+
+Decisao: gerar uma nova imagem imutavel do full extract, publicar no Artifact
+Registry e atualizar o Cloud Run Job para usar o novo digest e os argumentos
+da carga coordenada.
+
+Execucao controlada em 2026-11-09:
+
+- testes focados: `17 passed`;
+- imagem construida e publicada com a tag
+  `full-coordinated-20261109-a44bec4`;
+- digest publicado:
+  `sha256:1c1e20a0626f58a4d4469c2efc8758279d8994eee19d9c574023b402e18d43c2`;
+- `restart_lsn` consultado no slot v2: `1/71AC40C0`;
+- `epoch_id`: `epoch_20261109_001`;
+- Cloud Run Job atualizado para a imagem por digest e para executar o catalogo
+  completo sem `--table` especifica;
+- argumentos configurados: `--run-id=full_20261109_001`,
+  `--cdc-epoch-id=epoch_20261109_001`, `--cdc-start-lsn=1/71AC40C0`;
+- Job na geracao `10`, condicao `Ready=True`;
+- os Parquets antigos continuam preservados.
+
+## Full coordenado concluido no GCS
+
+Em 2026-11-09 foi executada a carga full coordenada pelo Cloud Run Job. A
+execucao `ecommerce-full-extract-z76tp` iniciou em `2026-11-09T11:23:10Z` e
+terminou em `2026-11-09T12:10:38Z`, com duracao de `47m27.59s`,
+`succeededCount=1` e condicao `Completed=True`.
+
+Validacao dos manifests no novo lote:
+
+- 13 de 13 tabelas com `status=succeeded`;
+- 17.100.608 linhas extraidas;
+- 546 arquivos Parquet/batches;
+- todas as tabelas registraram `cdc_coordination.status=coordinated`;
+- todas registraram `epoch_id=epoch_20261109_001` e `start_lsn=1/71AC40C0`;
+- `eventos_clientes` registrou 10.000.003 linhas e `itens_pedido` registrou
+  3.000.000 linhas, valores efetivos do snapshot que devem prevalecer sobre
+  estimativas/estatisticas anteriores do catalogo.
+
+A imagem configurada no Job permanece referenciada pelo digest imutavel
+`sha256:1c1e20a0626f58a4d4469c2efc8758279d8994eee19d9c574023b402e18d43c2`;
+na execucao, o Cloud Run registrou o digest de plataforma
+`sha256:b8eca6a09b0287f67dab8923b9f3a1121cfc92a091f09a71949d86fc7080742f`.
+Essa diferenca deve ser mantida documentada e revisada no pipeline de
+build/deploy, sem alterar a carga ja concluida.
+
+Ainda nao foi executada carga no BigQuery e nenhum Parquet antigo foi removido.
+A proxima etapa autorizada deve ser a materializacao Bronze no BigQuery,
+precedida pela definicao/validacao do consumidor CDC duravel e pela
+reconciliacao do full com os eventos desde o LSN inicial.
+
+## Limpeza dos ingests antigos e desenho da materializacao Bronze
+
+Em 2026-11-09, depois da validacao dos 13 manifests coordenados de
+`full_20261109_001`, foram removidos do GCS somente os objetos sob:
+
+`bronze/parquet/source=postgresql/schema=ecommerce/table=*/ingestion_date=2026-11-07/`
+
+Resultado da pre-validacao: 588 objetos, aproximadamente 873,42 MiB. A
+remocao nao incluiu o prefixo de `2026-11-09`; um manifesto coordenado de
+`categorias` foi lido novamente apos a limpeza com `status=succeeded`, 100
+linhas e `epoch_20261109_001`. O bucket possui soft delete, permitindo
+recuperacao operacional durante a janela configurada.
+
+Foi criado o materializer
+`src/materialization/bigquery_full_materializer.py`. Ele trabalha uma tabela
+por tarefa, monta o manifesto a partir dos parametros, rejeita cargas
+`uncoordinated`, carrega explicitamente as partes Parquet em staging, compara
+as contagens e publica a particao logica do mesmo `run_id` em uma transacao
+BigQuery. A tabela Bronze recebe metadados de linhagem e e particionada por
+`_ingestion_date`, com clustering pela chave primaria.
+
+Decisao arquitetural: a copia fisica GCS -> BigQuery fica no materializer
+Python, que sera chamado futuramente pelo Composer/Cloud Run Job. O Dataform
+sera acionado depois da Bronze materializada para Silver/Gold, assertions,
+deduplicacao e regras de negocio. Dataform nao sera usado como controlador
+principal do transporte de arquivos e manifests.
+
+Validacao local desta etapa: `54 passed` na suite unitária. Ainda nao foram
+criados dataset/tabelas BigQuery, imagem Cloud Run do materializer, DAG do
+Composer ou recursos Terraform correspondentes.
