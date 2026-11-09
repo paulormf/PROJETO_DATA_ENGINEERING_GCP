@@ -1,0 +1,150 @@
+name: Build and deploy Cloud Run images
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - src/**
+      - config/**
+      - requirements.txt
+      - requirements-materializer.txt
+      - infra/cloud_run/full_extract/**
+      - infra/cloud_run/materializer/**
+      - .dockerignore
+      - .github/workflows/deploy-cloud-run-images.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    name: Build, publish and update Cloud Run Jobs
+    runs-on: ubuntu-latest
+    environment: cloud-run-lab
+
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+      GCP_DEPLOYER_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+      ARTIFACT_REGISTRY_LOCATION: ${{ vars.ARTIFACT_REGISTRY_LOCATION }}
+      ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+      CLOUD_RUN_REGION: ${{ vars.CLOUD_RUN_REGION }}
+      FULL_EXTRACT_JOB_NAME: ${{ vars.FULL_EXTRACT_JOB_NAME }}
+      MATERIALIZER_JOB_NAME: ${{ vars.MATERIALIZER_JOB_NAME }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_vars=(
+            GCP_PROJECT_ID
+            GCP_WIF_PROVIDER
+            GCP_DEPLOYER_SERVICE_ACCOUNT
+            ARTIFACT_REGISTRY_LOCATION
+            ARTIFACT_REGISTRY_REPOSITORY
+            CLOUD_RUN_REGION
+            FULL_EXTRACT_JOB_NAME
+            MATERIALIZER_JOB_NAME
+          )
+
+          for variable_name in "${required_vars[@]}"; do
+            if [[ -z "${!variable_name:-}" ]]; then
+              echo "::error::GitHub Actions variable ${variable_name} is not configured."
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud with Workload Identity Federation
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          version: ">= 390.0.0"
+
+      - name: Configure Docker for Artifact Registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud auth configure-docker "${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev" --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and publish full extract image
+        id: build_full_extract
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/cloud_run/full_extract/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPOSITORY }}/ecommerce-full-extract:${{ github.sha }}
+          cache-from: type=gha,scope=full-extract
+          cache-to: type=gha,mode=max,scope=full-extract
+
+      - name: Build and publish materializer image
+        id: build_materializer
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/cloud_run/materializer/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPOSITORY }}/ecommerce-bronze-materializer:${{ github.sha }}
+          cache-from: type=gha,scope=materializer
+          cache-to: type=gha,mode=max,scope=materializer
+
+      - name: Update Cloud Run Jobs by immutable digest
+        shell: bash
+        env:
+          FULL_EXTRACT_DIGEST: ${{ steps.build_full_extract.outputs.digest }}
+          MATERIALIZER_DIGEST: ${{ steps.build_materializer.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          registry="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}"
+
+          gcloud run jobs update "${FULL_EXTRACT_JOB_NAME}" \
+            --project="${GCP_PROJECT_ID}" \
+            --region="${CLOUD_RUN_REGION}" \
+            --image="${registry}/ecommerce-full-extract@${FULL_EXTRACT_DIGEST}" \
+            --quiet
+
+          gcloud run jobs update "${MATERIALIZER_JOB_NAME}" \
+            --project="${GCP_PROJECT_ID}" \
+            --region="${CLOUD_RUN_REGION}" \
+            --image="${registry}/ecommerce-bronze-materializer@${MATERIALIZER_DIGEST}" \
+            --quiet
+
+      - name: Verify deployed image digests
+        shell: bash
+        env:
+          FULL_EXTRACT_DIGEST: ${{ steps.build_full_extract.outputs.digest }}
+          MATERIALIZER_DIGEST: ${{ steps.build_materializer.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          expected_full="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/ecommerce-full-extract@${FULL_EXTRACT_DIGEST}"
+          expected_materializer="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/ecommerce-bronze-materializer@${MATERIALIZER_DIGEST}"
+
+          actual_full="$(gcloud run jobs describe "${FULL_EXTRACT_JOB_NAME}" --project="${GCP_PROJECT_ID}" --region="${CLOUD_RUN_REGION}" --format="value(spec.template.spec.template.spec.containers[0].image)")"
+          actual_materializer="$(gcloud run jobs describe "${MATERIALIZER_JOB_NAME}" --project="${GCP_PROJECT_ID}" --region="${CLOUD_RUN_REGION}" --format="value(spec.template.spec.template.spec.containers[0].image)")"
+
+          [[ "${actual_full}" == "${expected_full}" ]]
+          [[ "${actual_materializer}" == "${expected_materializer}" ]]
+
+          echo "Cloud Run Jobs updated with immutable digests. No execution was triggered."

@@ -39,6 +39,14 @@ resource "google_cloud_run_v2_job" "materializer" {
     managed_by  = "terraform"
   }
 
+  lifecycle {
+    # O CI/CD atualiza somente o digest da imagem. Terraform continua sendo a
+    # fonte de verdade para identidade, recursos, env e args do Job.
+    ignore_changes = [
+      template[0].template[0].containers[0].image,
+    ]
+  }
+
   template {
     template {
       service_account = google_service_account.materializer.email

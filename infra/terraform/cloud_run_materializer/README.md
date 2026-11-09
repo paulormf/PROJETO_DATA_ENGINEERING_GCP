@@ -17,6 +17,11 @@ Esses recursos possuem ciclos de vida e autorizacoes proprios. O Job recebe
 argumentos fallback validos, mas o Composer devera sobrescrever tabela, run_id
 e data de ingestao em cada execucao.
 
+Depois da configuracao inicial, o digest da imagem e atualizado pelo workflow
+de CI/CD de imagens. Por isso o modulo ignora somente a alteracao do campo
+`image`; identidade, recursos, variaveis de ambiente e argumentos continuam
+sendo administrados pelo Terraform.
+
 ## Validacao sem alteracao GCP
 
 ```powershell

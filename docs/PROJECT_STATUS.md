@@ -1240,3 +1240,40 @@ para executar automaticamente em pushes para `main` que alterem
 foi mantido para reprocessamentos controlados. O `actions/checkout` foi
 atualizado para a major atual, eliminando o aviso de runtime Node.js 20 do
 runner.
+
+## CI/CD das imagens Cloud Run pendente
+
+O CD atual publica somente as DAGs no bucket do Composer. Continua pendente a
+automatizacao das imagens dos Jobs Cloud Run:
+
+- `ecommerce-full-extract`;
+- `ecommerce-bronze-materializer`.
+
+A proxima implementacao devera construir as imagens a partir de commits
+revisados, publica-las no Artifact Registry com tags imutaveis e atualizar os
+Jobs para os respectivos digests. O deploy devera incluir smoke test e
+separacao entre build/push e atualizacao dos Jobs, sem substituir tags
+imutaveis nem usar credenciais JSON.
+
+## CI/CD das imagens Cloud Run preparado
+
+Revisamos os Jobs existentes e preparamos a separacao entre infraestrutura e
+entrega de artefatos:
+
+- o Job `ecommerce-full-extract` permanece existente e nao foi recriado pelo
+  Terraform;
+- o Job `ecommerce-bronze-materializer` continua com estrutura administrada
+  pelo Terraform, mas seu digest de imagem e atualizado pelo CI/CD;
+- foi criado o modulo `infra/terraform/github_actions_cloud_run` para a
+  identidade dedicada de build/deploy;
+- foi criado o workflow `.github/workflows/deploy-cloud-run-images.yml` para
+  build, push por SHA, rollout por digest e verificacao da configuracao;
+- o modulo foi aplicado com sucesso: `6 added, 0 changed, 0 destroyed`;
+- foi criada a service account
+  `de-github-cloud-run-deployer@botbrewpub-ghsurp.iam.gserviceaccount.com`;
+- nenhuma nova imagem foi publicada e nenhum Job foi atualizado nesta etapa.
+
+Proxima atividade: configurar o ambiente GitHub `cloud-run-lab` com os outputs
+do modulo e validar o workflow com uma alteracao controlada. O workflow devera
+publicar imagens por SHA, atualizar os Jobs por digest e verificar a imagem
+ativa sem executar os Jobs automaticamente.
