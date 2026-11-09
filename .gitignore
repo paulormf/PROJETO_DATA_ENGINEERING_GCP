@@ -1,6 +1,7 @@
 # Ambiente Python
 .venv/
 __pycache__/
+.pytest_cache/
 *.py[cod]
 
 # Segredos e configurações locais

@@ -42,7 +42,7 @@ variable "assertion_dataset_id" {
 variable "dataform_repository_id" {
   description = "ID do repositorio Dataform."
   type        = string
-  default     = "ecommerce-dataform"
+  default     = "ecommerce-dataform-gcp"
 }
 
 variable "dataform_repository_display_name" {
@@ -55,4 +55,20 @@ variable "dataform_service_account_id" {
   description = "Service account usada pelas execucoes do Dataform."
   type        = string
   default     = "de-dataform-runner"
+}
+
+variable "dataform_git_repository_url" {
+  description = "URL HTTPS do repositorio GitHub conectado ao Dataform."
+  type        = string
+}
+
+variable "dataform_git_repository_link" {
+  description = "Recurso Developer Connect que vincula o repositorio GitHub."
+  type        = string
+}
+
+variable "dataform_git_default_branch" {
+  description = "Branch padrao usada pelo repositorio Dataform."
+  type        = string
+  default     = "main"
 }

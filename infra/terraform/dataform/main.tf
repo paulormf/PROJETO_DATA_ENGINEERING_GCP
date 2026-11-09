@@ -93,6 +93,12 @@ resource "google_dataform_repository" "ecommerce" {
   service_account = google_service_account.dataform_runner.email
   labels          = local.labels
 
+  git_remote_settings {
+    url                 = var.dataform_git_repository_url
+    default_branch      = var.dataform_git_default_branch
+    git_repository_link = var.dataform_git_repository_link
+  }
+
   depends_on = [
     google_project_service.dataform_api,
     google_service_account_iam_member.dataform_service_agent_user,

@@ -1,0 +1,43 @@
+name: Dataform CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - workflow_settings.yaml
+      - definitions/**
+      - includes/**
+      - .github/workflows/ci-dataform.yml
+  push:
+    branches:
+      - main
+    paths:
+      - workflow_settings.yaml
+      - definitions/**
+      - includes/**
+      - .github/workflows/ci-dataform.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    name: Compile Dataform project
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install Dataform CLI
+        run: npm install --global @dataform/cli@3.0.50
+
+      - name: Compile Dataform graph
+        run: dataform compile

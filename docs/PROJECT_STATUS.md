@@ -1561,10 +1561,9 @@ teve um `terraform plan` executado sem apply. O plano apresenta `11 to add,
   agent;
 - repositorio Dataform `ecommerce-dataform` em `us-central1`.
 
-Nenhum recurso Dataform ou dataset de saida foi criado nesta etapa. O proximo
-passo depende de aprovacao explicita do `apply`; depois disso sera necessario
-conectar o codigo local ao repositorio Dataform e executar primeiro uma
-compilacao/revisao do grafo cloud, antes de materializar a Silver.
+Registro anterior ao apply: nessa etapa inicial nenhum recurso Dataform ou
+dataset de saida havia sido criado. Depois, o apply foi autorizado e seu
+resultado esta registrado na secao seguinte.
 
 ### Resultado do apply da fundacao Dataform
 
@@ -1586,3 +1585,53 @@ isso essa alteracao foi interrompida. Reutilizar esse repositorio misturaria os
 projetos. A recomendacao e criar um novo ID de repositorio para este projeto,
 conectar posteriormente ao GitHub `PROJETO_DATA_ENGINEERING_GCP` e manter o
 repositorio antigo intacto.
+
+### Refatoracao do Dataform para o monorepo
+
+Em 2026-11-09 foi aprovada a decisao de manter Python, DAGs, Terraform e
+Dataform no mesmo repositorio GitHub `paulormf/PROJETO_DATA_ENGINEERING_GCP`.
+Como o Dataform espera `workflow_settings.yaml`, `definitions/` e `includes/`
+na raiz do repositorio conectado, o projeto foi movido para a raiz do
+monorepo. A copia temporaria `dataform/` foi removida somente depois da
+validacao da nova estrutura.
+
+Foi adicionada a documentacao [docs/DATAFORM.md](DATAFORM.md) e uma workflow
+dedicada [ci-dataform.yml](../.github/workflows/ci-dataform.yml), acionada
+somente quando o codigo Dataform ou sua configuracao muda. A workflow instala
+Dataform CLI `3.0.50` com Node.js 22 e executa apenas `dataform compile`; ela
+nao executa consultas nem materializa dados no BigQuery.
+
+Validacao local concluida em container Docker temporario:
+`Compiled 26 action(s)`, com 13 modelos incrementais Silver e 13 assertions,
+exit code `0`. A primeira tentativa no volume completo falhou somente porque
+o cache local `.pytest_cache` nao podia ser lido pelo container; a segunda
+validacao isolou os arquivos do Dataform e foi concluida com sucesso.
+
+O Terraform foi preparado para o novo repositorio GCP Dataform
+`ecommerce-dataform-gcp`, sem executar apply nesta etapa. O repositorio legado
+`ecommerce-dataform`, conectado ao projeto `PROJETO_ECOSSISTEMA_GCP`, permanece
+intacto. O novo repositorio sera gerenciado no state separado do legado.
+Depois da remocao segura da referencia legada do state local, o plan com
+`terraform.tfvars.example` retornou `1 to add, 0 to change, 0 to destroy`,
+propondo somente `ecommerce-dataform-gcp`.
+
+### Validacao do novo repositorio Dataform conectado ao GitHub
+
+Em 2026-11-09, a consulta somente leitura pela API Dataform confirmou que
+`ecommerce-dataform-gcp` esta `ACTIVE` em `us-central1`, conectado por
+Developer Connect ao repositorio GitHub
+`paulormf/PROJETO_DATA_ENGINEERING_GCP`, na branch `main`.
+
+O novo repositorio foi importado no state local do Terraform. O primeiro plan
+identificou que o vinculo Git existente nao estava declarado no codigo e
+proporia remove-lo. O bloco `git_remote_settings` foi entao adicionado ao
+modulo com a URL, branch e identificador Developer Connect observados na API.
+O segundo plan preserva o bloco Git e apresenta somente `0 to add, 1 to
+change, 0 to destroy`, alinhando display name, labels e a service account
+`de-dataform-runner`. Nenhum apply foi executado.
+
+O apply foi autorizado e executado em 2026-11-09 com resultado `0 added, 1
+changed, 0 destroyed`. A alteracao alinhou os metadados e a service account
+do repositorio sem recria-lo. O plan posterior retornou `No changes`, e uma
+nova consulta a API confirmou o estado `ACTIVE`, a URL do GitHub e a branch
+`main` preservados.

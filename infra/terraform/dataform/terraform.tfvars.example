@@ -7,6 +7,10 @@ bronze_dataset_id   = "ecommerce_bronze"
 silver_dataset_id   = "ecommerce_silver"
 assertion_dataset_id = "ecommerce_dataform_assertions"
 
-dataform_repository_id           = "ecommerce-dataform"
-dataform_repository_display_name = "Ecommerce Dataform"
+dataform_repository_id           = "ecommerce-dataform-gcp"
+dataform_repository_display_name = "Ecommerce Dataform GCP"
 dataform_service_account_id      = "de-dataform-runner"
+
+dataform_git_repository_url  = "https://github.com/paulormf/PROJETO_DATA_ENGINEERING_GCP.git"
+dataform_git_repository_link = "projects/botbrewpub-ghsurp/locations/us-central1/connections/github-data-engineering/gitRepositoryLinks/paulormf-PROJETO_DATA_ENGINEERING_GCP"
+dataform_git_default_branch  = "main"
