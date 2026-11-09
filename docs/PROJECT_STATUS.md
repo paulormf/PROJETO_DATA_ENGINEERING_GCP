@@ -1216,3 +1216,27 @@ O `terraform validate` foi aprovado e o plan posterior retornou `No changes`.
 Ainda falta cadastrar as variaveis no ambiente GitHub `composer-lab` e executar
 manualmente o workflow de deploy para validar a autenticacao OIDC e a
 publicacao dos dois arquivos no Composer.
+
+## Primeiro deploy Composer via GitHub Actions validado
+
+Em 2026-11-09, o workflow `Deploy Composer DAGs` foi executado com sucesso no
+commit `588a729ac3a95ed90a02ccc3ac16648940d155c7`. A autenticacao OIDC via
+Workload Identity Federation foi concluida, o arquivo temporario de
+credenciais foi removido no cleanup e os dois objetos foram publicados e
+verificados no bucket:
+
+- `dags/ecommerce_bronze_materialization.py`;
+- `dags/materialization_plan.py`.
+
+Essa validacao confirma o caminho GitHub Actions -> WIF -> service account ->
+Cloud Storage. A DAG apareceu no Composer sem erro de importacao, confirmando
+a sincronizacao/parsing do ambiente.
+
+## Deploy automatico apos merge habilitado
+
+Em 2026-11-09, apos a confirmacao da DAG no Composer, o workflow foi ajustado
+para executar automaticamente em pushes para `main` que alterem
+`orchestration/composer/dags/**`. O acionamento manual por `workflow_dispatch`
+foi mantido para reprocessamentos controlados. O `actions/checkout` foi
+atualizado para a major atual, eliminando o aviso de runtime Node.js 20 do
+runner.

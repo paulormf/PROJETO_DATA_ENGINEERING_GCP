@@ -1,6 +1,12 @@
 name: Deploy Composer DAGs
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - orchestration/composer/dags/**
+      - .github/workflows/deploy-composer-dags.yml
   workflow_dispatch:
 
 permissions:
@@ -21,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate deployment configuration
         shell: bash

@@ -9,9 +9,9 @@ Este repositório separa validação de código e publicação no Composer:
   Bronze no bucket do ambiente Composer;
 - a publicação ocorre usando Workload Identity Federation, sem chave JSON de
   service account;
-- o deploy está inicialmente disponível somente por `workflow_dispatch`, para
-  que a configuração de identidade e permissões seja validada antes de
-  habilitar o deploy automático após merge em `main`.
+- o deploy é executado automaticamente após push/merge em `main` quando houver
+  alteração nas DAGs, e também está disponível por `workflow_dispatch`;
+- o ambiente GitHub `composer-lab` pode exigir aprovação antes do deploy.
 
 ## Arquivos publicados
 
@@ -41,12 +41,13 @@ laboratório, homologação e produção sem alterar o workflow.
 
 ## Execução
 
-1. Fazer merge de uma alteração aprovada em `main`.
-2. Abrir GitHub > Actions > `Deploy Composer DAGs`.
-3. Selecionar `Run workflow`.
-4. Conferir o log de autenticação e os dois objetos publicados.
-5. Aguardar a sincronização e o parsing do Composer.
-6. Verificar no Airflow a aba `Code` da DAG e, se aplicável, executar uma
+1. Fazer merge de uma alteração aprovada em `main`; o workflow será disparado
+   automaticamente quando a alteração atingir os caminhos das DAGs.
+2. Para uma execução manual, abrir GitHub > Actions > `Deploy Composer DAGs` e
+   selecionar `Run workflow`.
+3. Conferir o log de autenticação e os dois objetos publicados.
+4. Aguardar a sincronização e o parsing do Composer.
+5. Verificar no Airflow a aba `Code` da DAG e, se aplicável, executar uma
    rodada de validação.
 
 O workflow não executa a DAG, não inicia o Cloud Run Job e não materializa
@@ -61,12 +62,6 @@ tabelas. Ele somente publica o código versionado no bucket do Composer.
   o ambiente GitHub.
 - O workflow não usa `credentials_json`, chave privada ou segredo de banco.
 - Para produção, o ambiente GitHub deve exigir aprovação antes do deploy.
-
-## Habilitação do deploy automático
-
-Depois de validar manualmente o workflow, o gatilho pode ser ampliado para
-`push` em `main` com filtro de caminhos. Essa alteração exige que o WIF, o
-service account, as permissões IAM e a proteção do ambiente estejam testados.
 
 ## Limitações conhecidas desta primeira versão
 
