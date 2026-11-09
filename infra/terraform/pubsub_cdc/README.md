@@ -7,6 +7,7 @@ Este modulo declara a camada de transporte do ciclo CDC v2:
 - retencao no topico para permitir replay durante o bootstrap full;
 - retry com backoff;
 - uma Dead Letter Topic compartilhada e assinatura de quarentena;
+- um topico de heartbeat e uma assinatura Pull para manter o LSN avancando quando houver pouca escrita nas tabelas;
 - IAM do service agent do Pub/Sub para publicar na DLQ e reconhecer mensagens das assinaturas.
 - service account dedicada do Debezium com permissao de publisher somente nos 13 topicos CDC;
 - politica padrao `ABANDON`, evitando apagar topicos acidentalmente durante um destroy.
@@ -21,6 +22,11 @@ ecommerce_gcp_v2.ecommerce.eventos_clientes
 ```
 
 As assinaturas sao nomeadas como `ecommerce-gcp-v2-<tabela>-sub`.
+
+O heartbeat usa o topico `ecommerce_gcp_v2.heartbeat` e a assinatura
+`ecommerce-gcp-v2-heartbeat-sub`. O Debezium deve publicar no topico somente
+depois que o topico existir e a service account dedicada tiver o papel de
+publisher nesse recurso.
 
 ## Validacao
 

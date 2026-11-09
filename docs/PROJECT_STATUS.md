@@ -738,3 +738,103 @@ Resultado:
 - verificacao GCP: 14 topicos e 14 assinaturas encontrados, incluindo DLQ.
 
 O Debezium ainda nao foi iniciado e nenhum slot PostgreSQL foi criado ou alterado. O state permanece local para o laboratorio; backend remoto GCS e persistencia duravel de offsets continuam pendentes antes de uma classificacao de producao.
+
+## Preparacao do heartbeat CDC v2
+
+Em 2026-11-09, o modulo Pub/Sub foi ajustado localmente para declarar tambem o
+topico `ecommerce_gcp_v2.heartbeat`, sua assinatura Pull e a permissao de
+publisher da service account dedicada do Debezium. O heartbeat foi habilitado
+no template ativo e no exemplo com intervalo de 10 segundos.
+
+Tambem foi atualizado localmente o arquivo ativo do Debezium para o ciclo v2:
+slot `ecommerce_gcp_v2_debezium_slot`, offsets/schema history em
+`/debezium/data/v2`, `snapshot.mode=no_data` e as 13 tabelas da publication.
+
+Estado desta atividade:
+
+- alteracoes locais aplicadas nos arquivos de Terraform e propriedades;
+- `terraform fmt` aprovado;
+- `terraform validate` aprovado;
+- `terraform plan` somente leitura aprovado: `3 to add, 0 to change, 0 to destroy`;
+- apply autorizado e concluido: `3 added, 0 changed, 0 destroyed`;
+- topico `ecommerce_gcp_v2.heartbeat` criado com retencao de sete dias;
+- assinatura `ecommerce-gcp-v2-heartbeat-sub` criada e ativa;
+- permissao `roles/pubsub.publisher` aplicada a `de-cdc-publisher` no topico de heartbeat;
+- verificacao via gcloud confirmou o topico, a assinatura e o estado `ACTIVE`;
+- novo `terraform plan` confirmou `No changes`;
+- o Debezium nao foi iniciado nem reiniciado;
+- proxima acao condicionada: iniciar o Debezium v2 em uma unica instancia e observar os eventos;
+- a existencia do topico/assinatura foi validada; o Debezium v2 ainda deve ser
+  iniciado somente na proxima etapa controlada.
+
+## Debezium v2 iniciado e corrigido
+
+Em 2026-11-09 o container local foi recriado com a configuracao v2. A primeira
+tentativa revelou uma falha real de persistencia: os caminhos apontavam para
+`/debezium/data/v2/`, mas o diretorio nao existia no volume montado. O processo
+chegou a conectar no PostgreSQL, porem falhou ao salvar offsets com
+`NoSuchFileException`.
+
+Tratamento aplicado:
+
+- container parado para interromper novas tentativas;
+- offsets v2 alterados para `/debezium/data/offsets-v2.dat`;
+- schema history v2 alterado para `/debezium/data/schema-history-v2.dat`;
+- arquivo legado `offsets.dat` preservado;
+- container recriado e validado como `running`;
+- arquivo `offsets-v2.dat` criado no volume;
+- logs confirmaram `snapshot.mode=no_data`, slot
+  `ecommerce_gcp_v2_debezium_slot`, inicio do streaming e processamento de mensagens;
+- assinatura de heartbeat recebeu mensagens do Debezium.
+
+Observacao operacional: o log registra um aviso recomendando avaliar
+`heartbeat.action.query` para reduzir risco de crescimento de WAL em periodos de
+baixa atividade. O heartbeat Pub/Sub esta funcionando, mas essa recomendacao
+deve ser avaliada antes de classificar o runtime como pronto para producao.
+
+## Teste controlado de INSERT, UPDATE e DELETE
+
+Em 2026-11-09 foi executado um teste controlado em `ecommerce.armazens` com a
+chave temporaria `armazem_id=1000005`. Cada operacao foi confirmada em uma
+transacao separada:
+
+- `INSERT`: capturado com `op=c`, `snapshot=false`, LSN `6202073400`;
+- `UPDATE`: capturado com `op=u`, `snapshot=false`, LSN `6202079472`;
+- `DELETE`: capturado com `op=d`, `snapshot=false`, LSN `6202080568`.
+
+As tres mensagens chegaram na assinatura
+`ecommerce-gcp-v2-armazens-sub` com a ordering key correspondente. A validacao
+foi feita via gcloud Pull, sem ack, porque ainda nao existe um consumidor
+duravel Bronze que possa confirmar a mensagem somente depois da persistencia.
+
+Observacao de contrato: as tabelas estao com `REPLICA IDENTITY DEFAULT`. Para
+DELETE, o destino deve usar a chave primaria (`before`/ordering key) para
+remover a linha; os demais campos anteriores nao devem ser tratados como
+before-image completo. Alterar para `REPLICA IDENTITY FULL` e uma alternativa
+que aumenta o volume de WAL e sera avaliada somente se o caso de uso exigir
+before-images completos.
+
+## Fronteira full GCS para BigQuery
+
+Os arquivos Parquet full existentes no GCS continuam sendo a landing Bronze de
+arquivos. A carga deles no dataset BigQuery sera feita na etapa de
+materializacao Bronze, depois da implementacao do consumidor CDC persistente e
+de uma nova fotografia full coordenada pelo `epoch_id` e `start_lsn`.
+
+Os arquivos produzidos em 2026-11-07 foram gerados antes da fronteira CDC e
+permanecem classificados como `uncoordinated`. Eles podem ser usados para
+validacao de laboratorio ou backfill, mas nao devem ser apresentados como a
+carga full+CDC definitiva.
+
+Fluxo aprovado para a proxima etapa de BigQuery:
+
+1. receber CDC em um consumidor duravel e persistir o envelope Bronze;
+2. executar full coordenado PostgreSQL -> Parquet -> GCS;
+3. carregar Parquet em tabelas staging/bronze do BigQuery com manifest e
+   `WRITE_TRUNCATE` restrito ao lote;
+4. validar contagem e manifest;
+5. reaplicar CDC desde `start_lsn` com deduplicacao por `event_id`;
+6. publicar o estado Silver somente depois da reconciliacao.
+
+Assim, o BigQuery sera introduzido na fase de materializacao Bronze, nao na
+fase de transporte inicial PostgreSQL -> GCS.

@@ -18,6 +18,16 @@ output "dead_letter_subscription_name" {
   value       = google_pubsub_subscription.dead_letter.name
 }
 
+output "heartbeat_topic_name" {
+  description = "Topico de heartbeat usado para manter o LSN do Debezium avancando."
+  value       = google_pubsub_topic.heartbeat.name
+}
+
+output "heartbeat_subscription_name" {
+  description = "Assinatura Pull do topico de heartbeat."
+  value       = google_pubsub_subscription.heartbeat.name
+}
+
 output "debezium_publisher_service_account_email" {
   description = "Service account que deve ser associada ao runtime do Debezium."
   value       = google_service_account.debezium_publisher.email

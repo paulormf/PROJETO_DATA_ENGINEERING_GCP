@@ -27,6 +27,13 @@ resource "google_pubsub_topic" "dead_letter" {
   labels          = merge(local.labels, { purpose = "dead-letter" })
 }
 
+resource "google_pubsub_topic" "heartbeat" {
+  deletion_policy            = var.deletion_policy
+  name                       = "${var.topic_prefix}.heartbeat"
+  message_retention_duration = var.topic_message_retention_duration
+  labels                     = merge(local.labels, { purpose = "heartbeat" })
+}
+
 resource "google_service_account" "debezium_publisher" {
   account_id   = var.debezium_service_account_id
   display_name = "CDC Debezium publisher"
@@ -74,10 +81,30 @@ resource "google_pubsub_subscription" "dead_letter" {
   }
 }
 
+resource "google_pubsub_subscription" "heartbeat" {
+  deletion_policy            = var.deletion_policy
+  name                       = "${var.subscription_prefix}-heartbeat-sub"
+  topic                      = google_pubsub_topic.heartbeat.id
+  ack_deadline_seconds       = 60
+  message_retention_duration = var.subscription_message_retention_duration
+  retain_acked_messages      = false
+  labels                     = merge(local.labels, { purpose = "heartbeat" })
+
+  expiration_policy {
+    ttl = ""
+  }
+}
+
 resource "google_pubsub_topic_iam_member" "dead_letter_publisher" {
   topic  = google_pubsub_topic.dead_letter.name
   role   = "roles/pubsub.publisher"
   member = local.pubsub_service_agent
+}
+
+resource "google_pubsub_topic_iam_member" "heartbeat_publisher" {
+  topic  = google_pubsub_topic.heartbeat.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:${google_service_account.debezium_publisher.email}"
 }
 
 resource "google_pubsub_topic_iam_member" "debezium_publisher" {
