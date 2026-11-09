@@ -155,6 +155,12 @@ resource "google_service_account_iam_member" "pubsub_token_creator" {
 resource "google_pubsub_subscription" "push" {
   for_each = var.tables
 
+  depends_on = [
+    google_bigquery_table_iam_member.consumer_data_editor,
+    google_cloud_run_v2_service_iam_member.push_invoker,
+    google_service_account_iam_member.pubsub_token_creator,
+  ]
+
   name                       = "${var.push_subscription_prefix}-${each.value}-push-sub"
   project                    = var.project_id
   topic                      = data.google_pubsub_topic.cdc[each.value].id

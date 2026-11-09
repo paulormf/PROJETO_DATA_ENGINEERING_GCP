@@ -1387,9 +1387,10 @@ Foram adicionados o Dockerfile em
 `docs/CDC_CONSUMER.md`. A compilacao Python e a suite completa foram
 validadas com `66 passed`.
 
-Ainda nao foram criados ou alterados recursos cloud. A proxima etapa exige
-aprovar o schema da tabela raw CDC, o IAM do consumidor, o servico Cloud Run
-e as 13 assinaturas push antes do primeiro deploy operacional.
+Os recursos cloud desta camada foram provisionados posteriormente, conforme
+registrado nas secoes abaixo. A implementacao permanece separada do Debezium:
+o Debezium publica eventos, o Pub/Sub entrega e o consumidor persiste a
+camada raw CDC no BigQuery.
 
 ### Validacao local do consumidor CDC
 
@@ -1403,10 +1404,9 @@ e as 13 assinaturas push antes do primeiro deploy operacional.
 - `python -m pytest`: `66 passed`.
 - `terraform -chdir=infra/terraform/cloud_run_cdc_consumer validate`: sucesso.
 
-### Generalizacao do consumidor CDC para as 13 tabelas
+### Generalizacao e provisionamento do consumidor CDC para as 13 tabelas
 
-Em 2026-11-09, a infraestrutura planejada foi generalizada sem aplicar
-recursos cloud:
+Em 2026-11-09, a infraestrutura foi generalizada e aplicada com Terraform:
 
 - uma tabela central `ecommerce_bronze.cdc_events_raw`;
 - um servico Cloud Run compartilhado por todas as tabelas;
@@ -1420,6 +1420,39 @@ recursos cloud:
   `CDC_CONSUMER_SERVICE_NAME` estiver configurada no ambiente GitHub.
 
 O modulo esta em
-`infra/terraform/cloud_run_cdc_consumer/`. O proximo passo operacional e
-publicar a imagem, preencher o digest no `terraform.tfvars`, revisar o
-`terraform plan` e somente entao autorizar o `apply`.
+`infra/terraform/cloud_run_cdc_consumer/`. A imagem foi publicada no Artifact
+Registry por workflow e o digest imutavel foi informado no `terraform.tfvars`
+local, que permanece fora do Git.
+
+### Apply e verificacao do consumidor CDC
+
+Em 2026-11-09, o `terraform plan` do modulo CDC consultou com sucesso os 13
+topicos existentes e apresentou `34 to add, 0 to change, 0 to destroy`.
+O `terraform apply -auto-approve` foi autorizado e concluido com `34 added,
+0 changed, 0 destroyed`. O apply criou a tabela raw, o servico Cloud Run,
+as duas identidades, IAM e as 13 assinaturas Push.
+
+Foi adicionada uma dependencia explicita para que as assinaturas Push somente
+sejam criadas depois da tabela, do IAM de escrita, do IAM de invocacao do Cloud
+Run e da emissao de tokens OIDC estarem disponiveis.
+
+Resultados observados apos o apply:
+
+- Cloud Run `ecommerce-cdc-consumer` em estado `Ready=True`;
+- URL: `https://ecommerce-cdc-consumer-4va2e2o37q-uc.a.run.app`;
+- 13 assinaturas `ecommerce-gcp-v2-<tabela>-push-sub` em estado `ACTIVE`,
+  todas apontando para `/pubsub`;
+- tabela `ecommerce_bronze.cdc_events_raw` criada com particionamento por
+  `ingested_at` e filtro de particao obrigatorio;
+- consulta de eventos recentes retornou zero registros, o que e esperado ate
+  ocorrer uma nova alteracao no PostgreSQL depois da criacao das assinaturas;
+- as assinaturas Pull anteriores foram preservadas para replay e diagnostico.
+
+Pendencias seguintes:
+
+1. executar uma alteracao CDC controlada no PostgreSQL e consultar a tabela raw;
+2. executar o plan do modulo `github_actions_cloud_run`, agora que a service
+   account `de-cdc-consumer` existe;
+3. apos revisao, aplicar o binding `Service Account User` para o deployer e
+   configurar `CDC_CONSUMER_SERVICE_NAME` no ambiente GitHub;
+4. somente depois integrar o raw CDC ao modelo Silver/Dataform.
