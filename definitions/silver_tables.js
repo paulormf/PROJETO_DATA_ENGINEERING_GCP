@@ -40,9 +40,14 @@ tables.forEach((table) => {
       clusterBy: table.primaryKey,
     },
   }).query((ctx) => {
+    // Keep the source partition filter directly on ingested_at. A dynamic
+    // scalar subquery over the target table prevents BigQuery partition
+    // elimination and makes the incremental query fail when the source table
+    // requires a partition filter.
+    const cdcLookbackDays = 7;
     const cdcLowerBound = ctx.when(
       ctx.incremental(),
-      `(SELECT COALESCE(TIMESTAMP_SUB(MAX(_ingested_at), INTERVAL 1 DAY), TIMESTAMP('1970-01-01')) FROM ${ctx.self()})`,
+      `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${cdcLookbackDays} DAY)`,
       "TIMESTAMP('1970-01-01')",
     );
 

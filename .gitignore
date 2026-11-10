@@ -31,3 +31,6 @@ infra/terraform/**/*.plan
 
 # Credenciais locais do Dataform CLI
 .df-credentials.json
+
+# Memoria de trabalho local; nao publicar no GitHub
+docs/PROJECT_STATUS.md
