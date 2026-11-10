@@ -30,7 +30,7 @@ tables.forEach((table) => {
 
   const cdcColumns = table.columns.map(jsonValue).join(",\n      ");
 
-  publish(silverName, {
+  const action = publish(silverName, {
     type: "incremental",
     uniqueKey: table.primaryKey,
     tags: ["silver", "postgresql", table.name],
@@ -39,19 +39,26 @@ tables.forEach((table) => {
       partitionBy: "DATE(_ingested_at)",
       clusterBy: table.primaryKey,
     },
-  }).query((ctx) => {
-    // Keep the source partition filter directly on ingested_at. A dynamic
-    // scalar subquery over the target table prevents BigQuery partition
-    // elimination and makes the incremental query fail when the source table
-    // requires a partition filter.
-    const cdcLookbackDays = 7;
-    const cdcLowerBound = ctx.when(
-      ctx.incremental(),
-      `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${cdcLookbackDays} DAY)`,
-      "TIMESTAMP('1970-01-01')",
-    );
+  });
 
-    return `
+  // Declare the checkpoint before the main query. BigQuery can use the
+  // script variable as a constant for source partition elimination, while
+  // the one-day overlap protects against late-arriving CDC events.
+  action.preOps((ctx) => `
+DECLARE cdc_checkpoint TIMESTAMP DEFAULT (
+  ${ctx.when(
+      ctx.incremental(),
+      `SELECT COALESCE(
+         TIMESTAMP_SUB(MAX(_ingested_at), INTERVAL 1 DAY),
+         TIMESTAMP('1970-01-01')
+       )
+       FROM ${ctx.self()}`,
+      `SELECT TIMESTAMP('1970-01-01')`,
+    )}
+);
+`);
+
+  action.query((ctx) => `
 WITH candidates AS (
   SELECT
       ${baselineColumns},
@@ -74,7 +81,7 @@ WITH candidates AS (
     SELECT *
     FROM ${ctx.ref("cdc_events_raw")}
     WHERE source_table = '${table.name}'
-      AND ingested_at >= ${cdcLowerBound}
+      AND ingested_at >= cdc_checkpoint
     QUALIFY ROW_NUMBER() OVER (
       PARTITION BY event_id
       ORDER BY ingested_at DESC
@@ -92,6 +99,5 @@ WITH candidates AS (
 SELECT * EXCEPT (_row_number)
 FROM ranked
 WHERE _row_number = 1
-`;
-  });
+`);
 });
