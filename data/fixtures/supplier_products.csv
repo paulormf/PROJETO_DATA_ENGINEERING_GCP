@@ -1,0 +1,6 @@
+supplier_product_id,sku,product_name,category,brand,price,stock_quantity,source_updated_at
+SUP-001,SKU-001,Cafe torrado,Bebidas,Marca A,12.50,10,2026-11-10T00:00:00Z
+SUP-002,SKU-002,Cha verde,Bebidas,Marca B,18.90,25,2026-11-10T00:00:00Z
+SUP-003,SKU-003,Biscoito integral,Mercearia,Marca C,7.40,0,2026-11-10T00:00:00Z
+SUP-004,SKU-004,Produto sem estoque,Mercearia,Marca D,9.99,3,2026-11-10T00:00:00Z
+SUP-005,,Produto invalido,Mercearia,Marca E,abc,-1,2026-11-10T00:00:00Z
