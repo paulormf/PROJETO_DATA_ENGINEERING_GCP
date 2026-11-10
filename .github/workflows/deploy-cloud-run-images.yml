@@ -19,6 +19,10 @@ on:
       - .github/workflows/deploy-cloud-run-images.yml
   workflow_dispatch:
 
+concurrency:
+  group: cloud-run-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   id-token: write
@@ -26,6 +30,7 @@ permissions:
 jobs:
   build-and-deploy:
     name: Build, publish and update Cloud Run Jobs
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: cloud-run-lab
 

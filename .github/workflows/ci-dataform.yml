@@ -19,6 +19,10 @@ on:
       - .github/workflows/ci-dataform.yml
   workflow_dispatch:
 
+concurrency:
+  group: dataform-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

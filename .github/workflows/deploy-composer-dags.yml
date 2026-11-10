@@ -5,6 +5,10 @@ on:
   # disponivel somente quando o ambiente for reativado explicitamente.
   workflow_dispatch:
 
+concurrency:
+  group: composer-dags-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   id-token: write
@@ -12,6 +16,7 @@ permissions:
 jobs:
   deploy:
     name: Publish DAGs to Composer
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: composer-lab
 

@@ -4,6 +4,10 @@ on:
   # Nao publicar nem iniciar Dataflow em pushes comuns.
   workflow_dispatch:
 
+concurrency:
+  group: dataflow-template-publish-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   id-token: write
@@ -11,6 +15,7 @@ permissions:
 jobs:
   publish-streaming-template:
     name: Build and publish isolated streaming template
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: dataflow-lab
 
