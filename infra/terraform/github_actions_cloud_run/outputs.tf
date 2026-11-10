@@ -24,5 +24,6 @@ output "github_environment_variables" {
     CLOUD_RUN_REGION             = var.region
     FULL_EXTRACT_JOB_NAME        = "ecommerce-full-extract"
     MATERIALIZER_JOB_NAME        = "ecommerce-bronze-materializer"
+    API_EXTRACT_JOB_NAME         = "ecommerce-api-extract"
   }
 }

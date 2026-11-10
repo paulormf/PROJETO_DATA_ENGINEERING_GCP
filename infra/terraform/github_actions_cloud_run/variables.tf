@@ -56,5 +56,6 @@ variable "runtime_service_account_ids" {
   default = [
     "de-ingestion-writer",
     "de-bronze-materializer",
+    "de-api-extract-writer",
   ]
 }

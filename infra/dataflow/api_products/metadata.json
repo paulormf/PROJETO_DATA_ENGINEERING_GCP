@@ -1,0 +1,43 @@
+{
+  "name": "DummyJSON products JSON to BigQuery Batch",
+  "description": "Valida o envelope Raw da API DummyJSON com Apache Beam e grava produtos validos no BigQuery, enviando rejeitos para uma DLQ no Cloud Storage.",
+  "parameters": [
+    {
+      "name": "input",
+      "label": "Input Raw JSON URI",
+      "helpText": "URI gs:// do envelope Raw JSON produzido pelo Cloud Run Job.",
+      "regexes": ["^gs://.+$"]
+    },
+    {
+      "name": "dead_letter_output",
+      "label": "Dead-letter output prefix",
+      "helpText": "Prefixo gs:// para arquivos JSONL de registros rejeitados.",
+      "regexes": ["^gs://.+$"]
+    },
+    {
+      "name": "bigquery_table",
+      "label": "BigQuery destination table",
+      "helpText": "Tabela no formato projeto:dataset.tabela.",
+      "regexes": ["^[^:]+:[^.]+\\.[^.]+$"]
+    },
+    {
+      "name": "batch_id",
+      "label": "Batch identifier",
+      "helpText": "Identificador imutavel do lote para rastreabilidade.",
+      "regexes": ["^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"]
+    },
+    {
+      "name": "source_system",
+      "label": "Source system",
+      "helpText": "Nome logico da fonte de dados.",
+      "isOptional": true,
+      "regexes": ["^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"]
+    },
+    {
+      "name": "ingested_at",
+      "label": "Ingestion timestamp",
+      "helpText": "Timestamp ISO-8601 opcional.",
+      "isOptional": true
+    }
+  ]
+}

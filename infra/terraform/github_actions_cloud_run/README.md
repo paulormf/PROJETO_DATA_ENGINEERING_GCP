@@ -23,7 +23,9 @@ Run separadamente.
 
 O modulo nao cria, executa ou exclui Jobs Cloud Run. O workflow publica a
 imagem e atualiza somente a referencia de imagem do Job, preservando os
-argumentos, variaveis e segredos ja configurados.
+argumentos, variaveis e segredos ja configurados. Cada service account de
+runtime, incluindo `de-api-extract-writer`, recebe `roles/iam.serviceAccountUser`
+somente para o deployer.
 
 ## Validacao
 
@@ -48,7 +50,8 @@ service account e os bindings listados acima.
 3. No repositorio `data-engineering` do Artifact Registry, conceda
    `Artifact Registry Writer` somente para essa service account.
 4. No projeto, conceda `Cloud Run Developer` para essa service account.
-5. Nas service accounts `de-ingestion-writer` e `de-bronze-materializer`,
-   conceda `Service Account User` para a identidade de deploy.
+5. Nas service accounts `de-ingestion-writer`, `de-bronze-materializer` e
+   `de-api-extract-writer`, conceda `Service Account User` para a identidade
+   de deploy.
 6. No ambiente GitHub `cloud-run-lab`, cadastre as variaveis emitidas pelo
    output `github_environment_variables`.

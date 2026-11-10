@@ -8,7 +8,6 @@ com BigQueryIO.
 
 from __future__ import annotations
 
-import argparse
 import csv
 import hashlib
 import json
@@ -18,8 +17,10 @@ from typing import Any, Literal
 
 import apache_beam as beam
 from apache_beam.metrics.metric import Metrics
-from apache_beam.options.pipeline_options import GoogleCloudOptions, PipelineOptions
+from apache_beam.options.pipeline_options import GoogleCloudOptions
 from apache_beam.pvalue import TaggedOutput
+
+from dataflow.common_options import BatchPipelineOptions
 
 CSV_COLUMNS = (
     "supplier_product_id",
@@ -197,7 +198,7 @@ class NormalizeSupplierProduct(beam.DoFn):
             yield TaggedOutput(INVALID_TAG, payload)
 
 
-class SupplierProductsOptions(PipelineOptions):
+class _LegacySupplierProductsOptions:
     """Argumentos específicos do pipeline, além dos argumentos Beam padrão."""
 
     @classmethod
@@ -228,6 +229,9 @@ class SupplierProductsOptions(PipelineOptions):
         )
 
 
+SupplierProductsOptions = BatchPipelineOptions
+
+
 def run(pipeline_args: list[str] | None = None) -> None:
     options = SupplierProductsOptions(pipeline_args)
     required_options = {
@@ -251,7 +255,8 @@ def run(pipeline_args: list[str] | None = None) -> None:
     ingested_at = options.ingested_at or datetime.now(UTC).isoformat()
     if not options.batch_id.strip():
         raise ValueError("batch_id deve ser informado")
-    if not options.source_system.strip():
+    source_system = options.source_system or "supplier_csv"
+    if not source_system.strip():
         raise ValueError("source_system deve ser informado")
 
     with beam.Pipeline(options=options) as pipeline:
@@ -260,7 +265,7 @@ def run(pipeline_args: list[str] | None = None) -> None:
             | "Read supplier CSV" >> beam.io.ReadFromText(options.input, skip_header_lines=1)
             | "Normalize and validate" >> beam.ParDo(
                 NormalizeSupplierProduct(
-                    source_system=options.source_system,
+                    source_system=source_system,
                     batch_id=options.batch_id,
                     ingested_at=ingested_at,
                 )
@@ -268,15 +273,25 @@ def run(pipeline_args: list[str] | None = None) -> None:
         )
 
         if options.output:
-            results[VALID_TAG] | "Write valid JSONL" >> beam.io.WriteToText(
-                options.output,
+            (
+                results[VALID_TAG]
+                | "Serialize valid JSONL" >> beam.Map(json.dumps)
+                | "Write valid JSONL"
+                >> beam.io.WriteToText(
+                    options.output,
+                    file_name_suffix=".jsonl",
+                    shard_name_template="-SS-of-NN",
+                )
+            )
+        (
+            results[INVALID_TAG]
+            | "Serialize dead letter JSONL" >> beam.Map(json.dumps)
+            | "Write dead letter JSONL"
+            >> beam.io.WriteToText(
+                options.dead_letter_output,
                 file_name_suffix=".jsonl",
                 shard_name_template="-SS-of-NN",
             )
-        results[INVALID_TAG] | "Write dead letter JSONL" >> beam.io.WriteToText(
-            options.dead_letter_output,
-            file_name_suffix=".jsonl",
-            shard_name_template="-SS-of-NN",
         )
         if options.bigquery_table:
             (

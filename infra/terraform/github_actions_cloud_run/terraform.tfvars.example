@@ -12,5 +12,6 @@ artifact_registry_repository = "data-engineering"
 runtime_service_account_ids = [
   "de-ingestion-writer",
   "de-bronze-materializer",
+  "de-api-extract-writer",
   "de-cdc-consumer",
 ]
