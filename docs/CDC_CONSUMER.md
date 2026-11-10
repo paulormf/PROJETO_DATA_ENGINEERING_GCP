@@ -6,8 +6,10 @@ O serviço `ingestion.cdc_push_service` recebe envelopes Pub/Sub push
 publicados pelo Debezium e prepara um registro imutavel para a tabela raw CDC
 do BigQuery.
 
-Nesta etapa o servico foi validado localmente. Nenhum servico Cloud Run,
-assinatura push ou tabela cloud nova foi criado.
+O repositorio contem o servico, os testes, o Dockerfile e o Terraform para o
+consumidor. O ambiente Composer e o runtime CDC nao ficam ligados durante o
+laboratorio; o estado efetivamente implantado deve ser conferido na GCP antes
+de uma operacao real.
 
 ## Contrato de entrada
 
@@ -59,9 +61,9 @@ python -m pytest tests/unit/test_cdc_push_service.py
 Para executar o container, a tabela destino sera configurada posteriormente
 por `BQ_CDC_TABLE`. A aplicacao nao cria tabelas automaticamente.
 
-## Proxima etapa
+## Ativacao futura
 
-Antes do deploy, definir no Terraform:
+Quando o CDC for ativado em um ambiente permanente, o Terraform deve manter:
 
 1. tabela `ecommerce_bronze.cdc_events_raw` e schema controlado;
 2. service account do consumidor;
@@ -72,6 +74,7 @@ Antes do deploy, definir no Terraform:
 7. dead-letter, ordering, retry e alertas do consumidor.
 
 O desenho Terraform correspondente esta em
-`infra/terraform/cloud_run_cdc_consumer/`. A primeira validacao operacional
-deve observar especialmente `categorias`, mas o provisionamento e geral para
-as 13 tabelas.
+`infra/terraform/cloud_run_cdc_consumer/`. A validacao operacional deve
+observar especialmente `categorias`, mas o provisionamento e geral para as 13
+tabelas. O runbook de sinais e retries esta em
+`docs/OBSERVABILITY.md`.

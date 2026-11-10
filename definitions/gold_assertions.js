@@ -159,3 +159,38 @@ WHERE variante_id IS NULL
    OR marca_id IS NULL
    OR categoria_id IS NULL
 `);
+
+assert("gold_mart_catalogo_reconciliado_grain").query((ctx) => `
+SELECT catalog_key
+FROM ${ctx.ref("mart_catalogo_reconciliado")}
+WHERE catalog_key IS NULL OR TRIM(catalog_key) = ''
+
+UNION ALL
+
+SELECT catalog_key
+FROM ${ctx.ref("mart_catalogo_reconciliado")}
+GROUP BY catalog_key
+HAVING COUNT(*) > 1
+`);
+
+assert("gold_mart_catalogo_reconciliado_source_flags").query((ctx) => `
+SELECT catalog_key
+FROM ${ctx.ref("mart_catalogo_reconciliado")}
+WHERE CAST(has_postgres AS INT64)
+    + CAST(has_api AS INT64)
+    + CAST(has_supplier AS INT64) < 1
+`);
+
+assert("gold_mart_catalogo_reconciliado_status").query((ctx) => `
+SELECT catalog_key
+FROM ${ctx.ref("mart_catalogo_reconciliado")}
+WHERE match_status NOT IN (
+  'all_sources',
+  'postgres_and_api',
+  'postgres_and_supplier',
+  'api_and_supplier',
+  'postgres_only',
+  'api_only',
+  'supplier_only'
+)
+`);

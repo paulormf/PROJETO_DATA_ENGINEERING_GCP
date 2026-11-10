@@ -4,6 +4,8 @@ import json
 import sys
 from typing import Any
 
+from google.api_core.exceptions import PreconditionFailed
+
 from ingestion.dummyjson_products_gcs_job import parse_args, upload_products_to_gcs
 
 
@@ -29,6 +31,11 @@ class FakeBlob:
     def upload_from_string(self, payload: bytes, **kwargs: Any) -> None:
         self.payload = payload
         self.kwargs = kwargs
+
+
+class ExistingBlob(FakeBlob):
+    def upload_from_string(self, payload: bytes, **kwargs: Any) -> None:
+        raise PreconditionFailed("object already exists")
 
 
 class FakeBucket:
@@ -101,3 +108,28 @@ def test_parse_args_maps_bucket_to_function_parameter(monkeypatch: Any) -> None:
 
     assert arguments.bucket_name == "bucket-test"
     assert arguments.object_name == "raw/products.json"
+
+
+def test_upload_products_to_gcs_is_safe_when_object_already_exists() -> None:
+    blob = ExistingBlob()
+    bucket = FakeBucket(blob)
+    client = FakeStorageClient(bucket)
+
+    def opener(request: object, *, timeout: int) -> FakeResponse:
+        return FakeResponse(
+            {"products": [{"id": 1, "title": "Produto"}], "total": 1, "skip": 0}
+        )
+
+    result = upload_products_to_gcs(
+        project_id="project-test",
+        bucket_name="bucket-test",
+        object_name="raw/api=dummyjson/products/run=run-001/products.json",
+        api_url="https://example.test/products",
+        opener=opener,
+        storage_client=client,
+    )
+
+    assert result["status"] == "already_exists"
+    assert result["gcs_uri"] == (
+        "gs://bucket-test/raw/api=dummyjson/products/run=run-001/products.json"
+    )

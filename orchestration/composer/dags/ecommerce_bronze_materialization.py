@@ -6,8 +6,6 @@ esta DAG recebe um ``run_id`` ja publicado no GCS e materializa somente aquele
 ciclo coordenado no BigQuery.
 """
 
-# Teste controlado de roteamento do workflow: alteracao sem efeito operacional.
-
 from __future__ import annotations
 
 from datetime import datetime, timedelta

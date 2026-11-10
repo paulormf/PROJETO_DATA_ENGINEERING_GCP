@@ -1,12 +1,8 @@
 name: Deploy Composer DAGs
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - orchestration/composer/dags/**
-      - .github/workflows/deploy-composer-dags.yml
+  # Composer permanece desligado para controle de custos. A publicacao fica
+  # disponivel somente quando o ambiente for reativado explicitamente.
   workflow_dispatch:
 
 permissions:
@@ -69,6 +65,8 @@ jobs:
           gcloud storage cp \
             orchestration/composer/dags/ecommerce_bronze_materialization.py \
             orchestration/composer/dags/materialization_plan.py \
+            orchestration/composer/dags/ecommerce_external_sources.py \
+            orchestration/composer/dags/external_sources_plan.py \
             "gs://${COMPOSER_DAGS_BUCKET}/dags/" \
             --project="${GCP_PROJECT_ID}"
 
@@ -80,4 +78,6 @@ jobs:
           gcloud storage ls \
             "gs://${COMPOSER_DAGS_BUCKET}/dags/ecommerce_bronze_materialization.py" \
             "gs://${COMPOSER_DAGS_BUCKET}/dags/materialization_plan.py" \
+            "gs://${COMPOSER_DAGS_BUCKET}/dags/ecommerce_external_sources.py" \
+            "gs://${COMPOSER_DAGS_BUCKET}/dags/external_sources_plan.py" \
             --project="${GCP_PROJECT_ID}"

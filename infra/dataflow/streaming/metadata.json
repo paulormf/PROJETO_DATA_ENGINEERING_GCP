@@ -1,0 +1,49 @@
+{
+  "name": "Pub/Sub streaming shadow table",
+  "description": "Pipeline Beam Streaming isolado para praticar event-time, janelas, deduplicacao e DLQ sem consumir os topicos reais do Debezium.",
+  "streaming": true,
+  "parameters": [
+    {
+      "name": "input_subscription",
+      "label": "Input Pub/Sub subscription",
+      "helpText": "Nome completo da assinatura Pub/Sub de laboratorio.",
+      "regexes": ["^projects/.+/subscriptions/.+$"]
+    },
+    {
+      "name": "output_table",
+      "label": "BigQuery shadow table",
+      "helpText": "Tabela de sombra no formato projeto:dataset.tabela.",
+      "regexes": ["^[^:]+:[^.]+\\.[^.]+$"]
+    },
+    {
+      "name": "dead_letter_topic",
+      "label": "Dead-letter Pub/Sub topic",
+      "helpText": "Nome completo do topico de rejeitos.",
+      "regexes": ["^projects/.+/topics/.+$"]
+    },
+    {
+      "name": "source_system",
+      "label": "Source system",
+      "helpText": "Nome logico da fonte sintetica.",
+      "isOptional": true
+    },
+    {
+      "name": "window_size_seconds",
+      "label": "Window size seconds",
+      "helpText": "Tamanho da janela fixa de event-time.",
+      "isOptional": true
+    },
+    {
+      "name": "allowed_lateness_seconds",
+      "label": "Allowed lateness seconds",
+      "helpText": "Atraso permitido para eventos fora de ordem.",
+      "isOptional": true
+    },
+    {
+      "name": "triggering_frequency_seconds",
+      "label": "Triggering frequency seconds",
+      "helpText": "Frequencia de flush para BigQuery Streaming Inserts.",
+      "isOptional": true
+    }
+  ]
+}

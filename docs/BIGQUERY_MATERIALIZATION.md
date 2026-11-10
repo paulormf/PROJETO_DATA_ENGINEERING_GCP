@@ -58,14 +58,15 @@ O Cloud Composer devera disparar o job de materializacao depois que o full
 coordenado for concluido. Depois da reconciliacao com o CDC persistido, o DAG
 acionara o workflow Dataform para Silver e Gold.
 
-O dataset `ecommerce_bronze` ja existe no projeto e possui a tabela manual de
-validacao `categorias_raw`, com 100 registros. O novo materializer ainda nao
-foi executado e nao deve sobrescrever essa tabela sem uma migracao controlada,
-pois ela nao possui os metadados de linhagem previstos neste contrato. A
-imagem local do materializer foi validada com `docker build` e `--help` e
-publicada no Artifact Registry com digest imutavel. O Job Cloud Run foi criado
-com Terraform e executado uma vez para cada uma das 13 tabelas do catalogo.
-As 13 tabelas `bronze_<tabela>` foram validadas no BigQuery com as contagens
-dos manifests, metadados do mesmo `run_id` e particionamento/clustering
-esperados. O DAG Composer ainda nao foi criado; ele automatizara esse fluxo
-nas proximas execucoes.
+O dataset `ecommerce_bronze` ja existe no projeto. A tabela manual de
+validacao `categorias_raw` nao faz parte do contrato novo; as tabelas
+`bronze_<tabela>` preservam seus proprios metadados de linhagem e nao
+sobrescrevem a tabela manual. A imagem do materializer foi publicada no
+Artifact Registry com digest imutavel e o Job Cloud Run foi executado para as
+13 tabelas do catalogo. As contagens dos manifests, o `run_id` e o
+particionamento/clustering foram validados.
+
+O DAG Composer esta versionado no repositorio e pronto para ativacao futura,
+mas o ambiente Composer nao permanece provisionado no laboratorio. A
+automacao equivalente esta documentada em
+`orchestration/composer/README.md`.

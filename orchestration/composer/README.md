@@ -23,11 +23,13 @@ posterior.
 
 ## Estrutura enviada ao Composer
 
-O bucket de ambiente do Composer deve receber estes dois arquivos no mesmo
+O bucket de ambiente do Composer deve receber estes arquivos no mesmo
 diretorio `dags/`:
 
 - `ecommerce_bronze_materialization.py`;
 - `materialization_plan.py`.
+- `ecommerce_external_sources.py`;
+- `external_sources_plan.py`.
 
 O teste `tests/unit/test_materialization_plan.py` garante que a lista de
 tabelas publicada na DAG nao divergiu de `config/ingestion_tables.json`.
@@ -77,3 +79,15 @@ Na raiz do repositorio:
 
 Esses comandos nao importam Airflow, nao fazem upload para Composer e nao
 executam Cloud Run.
+
+## DAG de fontes externas
+
+`ecommerce_external_sources.py` e uma DAG futura, com `schedule=None`, que
+encadeia Cloud Run API -> Dataflow Batch -> Dataform. Ela deriva o nome do
+objeto Raw, `batch_id`, job Dataflow e prefixo de DLQ no runtime. O
+`dataform_compilation_result` deve apontar para uma compilacao aprovada antes
+de qualquer execucao real.
+
+O workflow `.github/workflows/deploy-composer-dags.yml` publica as quatro DAGs
+somente por disparo manual. Um push comum no repositorio nao acessa o bucket do
+Composer.

@@ -1,0 +1,97 @@
+name: Publish Dataflow templates (manual)
+
+on:
+  # Nao publicar nem iniciar Dataflow em pushes comuns.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-streaming-template:
+    name: Build and publish isolated streaming template
+    runs-on: ubuntu-latest
+    environment: dataflow-lab
+
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+      GCP_DEPLOYER_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+      ARTIFACT_REGISTRY_LOCATION: ${{ vars.ARTIFACT_REGISTRY_LOCATION }}
+      ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+      GCS_BUCKET: ${{ vars.DATAFLOW_ARTIFACT_BUCKET }}
+      DATAFLOW_REGION: ${{ vars.DATAFLOW_REGION }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          required_vars=(
+            GCP_PROJECT_ID
+            GCP_WIF_PROVIDER
+            GCP_DEPLOYER_SERVICE_ACCOUNT
+            ARTIFACT_REGISTRY_LOCATION
+            ARTIFACT_REGISTRY_REPOSITORY
+            GCS_BUCKET
+            DATAFLOW_REGION
+          )
+          for variable_name in "${required_vars[@]}"; do
+            if [[ -z "${!variable_name:-}" ]]; then
+              echo "::error::GitHub Actions variable ${variable_name} is not configured."
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud with Workload Identity Federation
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          version: ">= 390.0.0"
+
+      - name: Configure Docker for Artifact Registry
+        shell: bash
+        run: gcloud auth configure-docker "${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev" --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and publish streaming image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/dataflow/streaming/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ARTIFACT_REGISTRY_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPOSITORY }}/dataflow-pubsub-streaming-shadow:${{ github.sha }}
+          cache-from: type=gha,scope=dataflow-streaming
+          cache-to: type=gha,mode=max,scope=dataflow-streaming
+
+      - name: Build Flex Template specification
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          image="${ARTIFACT_REGISTRY_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/dataflow-pubsub-streaming-shadow@${IMAGE_DIGEST}"
+          template="gs://${GCS_BUCKET}/dataflow/templates/streaming/pubsub-shadow/${GITHUB_SHA}/template.json"
+          gcloud dataflow flex-template build "${template}" \
+            --project="${GCP_PROJECT_ID}" \
+            --image-gcr-path="${image}" \
+            --sdk-language=PYTHON \
+            --metadata-file=infra/dataflow/streaming/metadata.json
+
+          echo "Template publicado: ${template}"
+          echo "Nenhum job Dataflow foi iniciado por este workflow."

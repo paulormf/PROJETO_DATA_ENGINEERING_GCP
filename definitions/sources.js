@@ -19,3 +19,9 @@ declare({
   schema: "ecommerce_bronze",
   name: "dummyjson_products_raw",
 });
+
+declare({
+  database: dataform.projectConfig.defaultDatabase,
+  schema: "ecommerce_bronze",
+  name: "supplier_products_raw",
+});

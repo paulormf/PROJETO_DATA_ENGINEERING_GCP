@@ -71,11 +71,18 @@ def upload_products_to_gcs(
             content_type="application/json",
             if_generation_match=0,
         )
-    except PreconditionFailed as exc:
-        raise RuntimeError(
-            f"o objeto gs://{bucket_name}/{object_name} ja existe; "
-            "use um novo object_name para uma nova execucao"
-        ) from exc
+    except PreconditionFailed:
+        # O caminho do lote e imutavel. Uma reexecucao segura nao deve
+        # sobrescrever o objeto nem transformar uma carga ja concluida em
+        # falha operacional.
+        return {
+            "status": "already_exists",
+            "source_system": envelope["source_system"],
+            "gcs_uri": f"gs://{bucket_name}/{object_name}",
+            "records": len(products),
+            "bytes": len(payload),
+            "extracted_at": envelope["extracted_at"],
+        }
 
     return {
         "status": "succeeded",

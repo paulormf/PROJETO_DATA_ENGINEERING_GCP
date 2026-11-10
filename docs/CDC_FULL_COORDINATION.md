@@ -57,9 +57,11 @@ Pub/Sub oferece entrega pelo menos uma vez. Ordering key reduz reordenacao por c
   `armazens`;
 - a carga full coordenada foi executada e os manifests foram validados.
 
-Ainda pendem para a classificacao de producao: consumidor CDC duravel,
-persistencia operacional de offsets fora do volume local, materializacao
-idempotente no destino e observabilidade do consumidor.
+O repositorio ja contem o consumidor CDC, o contrato de persistencia Bronze,
+as politicas de retry/dead-letter, a materializacao Silver e os testes de
+observabilidade operacional. A classificacao como producao ainda depende de
+validar o deploy no ambiente alvo, retencao de offsets, alertas e SLA; esses
+recursos nao ficam ativos no laboratorio por decisao de custo.
 
 O slot antigo nao deve ser removido nesta etapa. A carga full de 2026-11-07
 foi classificada como `uncoordinated` e seus objetos foram removidos do GCS

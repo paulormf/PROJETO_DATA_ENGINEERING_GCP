@@ -11,9 +11,15 @@ Pull Request possa revisar codigo Python, DAGs, infraestrutura e modelos SQL.
 - `definitions/silver_tables.js`: modelos incrementais Silver reconciliando o
   baseline full e os eventos Debezium;
 - `definitions/silver_assertions.js`: assertions de integridade de chaves;
+- `definitions/silver_dummyjson_products.js`: estado atual dos produtos da API;
+- `definitions/silver_dummyjson_products_assertions.js`: qualidade da Silver da API;
+- `definitions/silver_supplier_products.js`: estado atual do catalogo CSV do fornecedor;
+- `definitions/silver_supplier_products_assertions.js`: qualidade da Silver do fornecedor;
 - `definitions/gold_dimensions.js`: dimensoes de tempo, cliente, armazem e SKU;
 - `definitions/gold_facts.js`: fato no grao de item de pedido;
 - `definitions/gold_marts.js`: data mart diario de vendas;
+- `definitions/gold_external_catalog.js`: reconciliacao de catalogo entre
+  PostgreSQL, API e fornecedor;
 - `definitions/gold_assertions.js`: assertions de chaves, reconciliação de
   métricas, integridade dimensional, cobertura temporal e granularidade do mart;
 - `infra/terraform/dataform/`: datasets, IAM e repositorio Dataform.
@@ -33,6 +39,11 @@ Dataform CLI 3.0.50, ou pelo container utilizado no bootstrap inicial.
 O primeiro ciclo cloud deve ser executado somente depois de revisar o grafo
 compilado e confirmar que as tabelas Bronze e `cdc_events_raw` estao
 disponiveis.
+
+Os modelos externos usam tabelas Bronze append-only e deduplicam por chave de
+negocio na Silver. Assim, uma nova carga da API ou do fornecedor pode ser
+reprocessada sem substituir o Raw anterior; `batch_id`, hash do registro e
+timestamp de ingestao permanecem disponiveis para auditoria.
 
 ## Repositorio Git
 
