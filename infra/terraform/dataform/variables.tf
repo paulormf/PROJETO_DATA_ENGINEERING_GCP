@@ -33,6 +33,12 @@ variable "silver_dataset_id" {
   default     = "ecommerce_silver"
 }
 
+variable "gold_dataset_id" {
+  description = "Dataset BigQuery que recebera os modelos dimensionais e data marts Gold."
+  type        = string
+  default     = "ecommerce_gold"
+}
+
 variable "assertion_dataset_id" {
   description = "Dataset BigQuery que recebera as assertions do Dataform."
   type        = string

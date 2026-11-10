@@ -28,6 +28,15 @@ resource "google_bigquery_dataset" "silver" {
   labels                     = merge(local.labels, { layer = "silver" })
 }
 
+resource "google_bigquery_dataset" "gold" {
+  project                    = var.project_id
+  dataset_id                 = var.gold_dataset_id
+  location                   = var.bigquery_location
+  description                = "Camada Gold dimensional e data marts do dominio ecommerce."
+  delete_contents_on_destroy = false
+  labels                     = merge(local.labels, { layer = "gold" })
+}
+
 resource "google_bigquery_dataset" "assertions" {
   project                    = var.project_id
   dataset_id                 = var.assertion_dataset_id
@@ -54,6 +63,13 @@ resource "google_bigquery_dataset_iam_member" "runner_bronze_viewer" {
 resource "google_bigquery_dataset_iam_member" "runner_silver_editor" {
   project    = var.project_id
   dataset_id = google_bigquery_dataset.silver.dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${google_service_account.dataform_runner.email}"
+}
+
+resource "google_bigquery_dataset_iam_member" "runner_gold_editor" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.gold.dataset_id
   role       = "roles/bigquery.dataEditor"
   member     = "serviceAccount:${google_service_account.dataform_runner.email}"
 }

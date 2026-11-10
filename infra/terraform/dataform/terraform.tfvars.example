@@ -5,6 +5,7 @@ bigquery_location = "us-central1"
 
 bronze_dataset_id   = "ecommerce_bronze"
 silver_dataset_id   = "ecommerce_silver"
+gold_dataset_id     = "ecommerce_gold"
 assertion_dataset_id = "ecommerce_dataform_assertions"
 
 dataform_repository_id           = "ecommerce-dataform-gcp"
