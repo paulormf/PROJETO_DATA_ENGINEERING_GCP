@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import sys
 from typing import Any
 
-from ingestion.dummyjson_products_gcs_job import upload_products_to_gcs
+from ingestion.dummyjson_products_gcs_job import parse_args, upload_products_to_gcs
 
 
 class FakeResponse:
@@ -81,3 +82,22 @@ def test_upload_products_to_gcs_writes_immutable_raw_object() -> None:
     assert json.loads(blob.payload or b"{}")["products"] == [
         {"id": 1, "title": "Produto"}
     ]
+
+
+def test_parse_args_maps_bucket_to_function_parameter(monkeypatch: Any) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "dummyjson_products_gcs_job.py",
+            "--bucket",
+            "bucket-test",
+            "--object-name",
+            "raw/products.json",
+        ],
+    )
+
+    arguments = parse_args()
+
+    assert arguments.bucket_name == "bucket-test"
+    assert arguments.object_name == "raw/products.json"

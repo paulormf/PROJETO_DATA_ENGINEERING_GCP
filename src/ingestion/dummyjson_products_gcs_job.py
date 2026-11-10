@@ -90,7 +90,7 @@ def upload_products_to_gcs(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-id", default=os.getenv("GCP_PROJECT_ID"))
-    parser.add_argument("--bucket", required=True)
+    parser.add_argument("--bucket", dest="bucket_name", required=True)
     parser.add_argument("--object-name", required=True)
     parser.add_argument("--api-url", default=DEFAULT_API_URL)
     parser.add_argument("--page-size", type=int, default=DEFAULT_PAGE_SIZE)
