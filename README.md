@@ -9,8 +9,6 @@ código e CI/CD.
 
 ![Fluxo de dados e tecnologias](docs/architecture_portfolio.png)
 
-O diagrama também possui uma versão vetorial/editável em
-[`docs/architecture.svg`](docs/architecture.svg).
 
 ### Fluxos principais
 
