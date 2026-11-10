@@ -18,7 +18,7 @@ from typing import Any, Literal
 
 import apache_beam as beam
 from apache_beam.metrics.metric import Metrics
-from apache_beam.options.pipeline_options import PipelineOptions
+from apache_beam.options.pipeline_options import GoogleCloudOptions, PipelineOptions
 from apache_beam.pvalue import TaggedOutput
 
 CSV_COLUMNS = (
@@ -205,22 +205,33 @@ class SupplierProductsOptions(PipelineOptions):
         parser.add_argument("--input", help="CSV local ou URI gs://")
         parser.add_argument("--output", help="Prefixo JSONL válido")
         parser.add_argument(
-            "--dead-letter-output", help="Prefixo JSONL de rejeitos"
+            "--dead-letter-output",
+            "--dead_letter_output",
+            dest="dead_letter_output",
+            help="Prefixo JSONL de rejeitos",
         )
         parser.add_argument(
             "--bigquery-table",
+            "--bigquery_table",
+            dest="bigquery_table",
             help="Tabela BigQuery completa: projeto:dataset.tabela",
         )
-        parser.add_argument("--source-system", default="supplier_csv")
-        parser.add_argument("--batch-id")
-        parser.add_argument("--ingested-at")
+        parser.add_argument(
+            "--source-system",
+            "--source_system",
+            dest="source_system",
+            default="supplier_csv",
+        )
+        parser.add_argument("--batch-id", "--batch_id", dest="batch_id")
+        parser.add_argument(
+            "--ingested-at", "--ingested_at", dest="ingested_at"
+        )
 
 
 def run(pipeline_args: list[str] | None = None) -> None:
     options = SupplierProductsOptions(pipeline_args)
     required_options = {
         "input": options.input,
-        "output": options.output,
         "dead_letter_output": options.dead_letter_output,
         "batch_id": options.batch_id,
     }
@@ -232,7 +243,8 @@ def run(pipeline_args: list[str] | None = None) -> None:
         )
     if not options.output and not options.bigquery_table:
         raise ValueError("informe --output ou --bigquery-table")
-    if options.bigquery_table and not options.temp_location:
+    google_options = options.view_as(GoogleCloudOptions)
+    if options.bigquery_table and not google_options.temp_location:
         raise ValueError(
             "--temp_location deve ser informado quando --bigquery-table for usado"
         )
@@ -277,7 +289,7 @@ def run(pipeline_args: list[str] | None = None) -> None:
                     create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
                     write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
                     method=beam.io.WriteToBigQuery.Method.FILE_LOADS,
-                    custom_gcs_temp_location=options.temp_location,
+                    custom_gcs_temp_location=google_options.temp_location,
                 )
             )
 

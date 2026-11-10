@@ -4,12 +4,14 @@ from apache_beam.testing.test_pipeline import TestPipeline as BeamTestPipeline
 from apache_beam.testing.util import assert_that, equal_to
 
 import apache_beam as beam
+from apache_beam.options.pipeline_options import GoogleCloudOptions
 
 from dataflow.supplier_products_batch import (
     BIGQUERY_SCHEMA,
     INVALID_TAG,
     VALID_TAG,
     NormalizeSupplierProduct,
+    SupplierProductsOptions,
     build_bigquery_row,
     normalize_supplier_product,
     parse_csv_line,
@@ -121,3 +123,29 @@ def test_beam_transform_separates_valid_and_invalid_records() -> None:
 
         assert_that(outputs[VALID_TAG], assert_one, label="one valid")
         assert_that(outputs[INVALID_TAG], assert_one, label="one invalid")
+
+
+def test_template_parameter_names_are_accepted_by_pipeline_options() -> None:
+    options = SupplierProductsOptions(
+        [
+            "--input",
+            "gs://bucket/input.csv",
+            "--dead_letter_output",
+            "gs://bucket/dlq",
+            "--bigquery_table",
+            "project:dataset.table",
+            "--temp_location",
+            "gs://bucket/temp",
+            "--batch_id",
+            "batch-001",
+            "--source_system",
+            "supplier_csv",
+        ]
+    )
+
+    assert options.input == "gs://bucket/input.csv"
+    assert options.dead_letter_output == "gs://bucket/dlq"
+    assert options.bigquery_table == "project:dataset.table"
+    assert options.batch_id == "batch-001"
+    assert options.source_system == "supplier_csv"
+    assert options.view_as(GoogleCloudOptions).temp_location == "gs://bucket/temp"

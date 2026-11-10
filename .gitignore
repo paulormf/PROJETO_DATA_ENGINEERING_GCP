@@ -1,5 +1,6 @@
 # Ambiente Python
 .venv/
+.venv-dataflow/
 __pycache__/
 .pytest_cache/
 *.py[cod]
