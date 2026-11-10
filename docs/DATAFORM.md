@@ -14,8 +14,8 @@ Pull Request possa revisar codigo Python, DAGs, infraestrutura e modelos SQL.
 - `definitions/gold_dimensions.js`: dimensoes de tempo, cliente, armazem e SKU;
 - `definitions/gold_facts.js`: fato no grao de item de pedido;
 - `definitions/gold_marts.js`: data mart diario de vendas;
-- `definitions/gold_assertions.js`: assertions de chaves, integridade dimensional
-  e granularidade do mart;
+- `definitions/gold_assertions.js`: assertions de chaves, reconciliação de
+  métricas, integridade dimensional, cobertura temporal e granularidade do mart;
 - `infra/terraform/dataform/`: datasets, IAM e repositorio Dataform.
 
 A camada Gold fica no dataset `ecommerce_gold`. A `dim_tempo` e derivada do
