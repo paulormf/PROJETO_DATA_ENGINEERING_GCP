@@ -1,0 +1,20 @@
+project_id  = "botbrewpub-ghsurp"
+region      = "us-central1"
+bucket_name = "botbrewpub-ghsurp-projeto-data-engineering-gcp"
+
+service_account_id = "de-api-extract-writer"
+job_name           = "ecommerce-api-extract"
+
+# Substituir pelo digest produzido pelo workflow de imagens.
+api_extract_image = "us-central1-docker.pkg.dev/botbrewpub-ghsurp/data-engineering/ecommerce-api-extract@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+# O primeiro object_name e deliberadamente explicito. O Composer devera gerar
+# um caminho unico por execucao antes de acionar este Job.
+job_default_args = [
+  "--project-id",
+  "botbrewpub-ghsurp",
+  "--bucket",
+  "botbrewpub-ghsurp-projeto-data-engineering-gcp",
+  "--object-name",
+  "raw/api=dummyjson/resource=products/run=bootstrap/products.json",
+]
